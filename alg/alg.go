@@ -93,6 +93,17 @@ func (a *argon2idAlg) H(x []byte) []byte {
 	return argon2.IDKey(x, a.salt, a.time, a.memKiB, a.threads, uint32(a.BlockSize()))
 }
 
+// Argon2idParams is a's Argon2id parameters, for running the same step by
+// other means (a GPU): x/crypto's argon2.IDKey(x, salt, passes, memKiB, 1,
+// a.BlockSize()) is a.H(x). ok is false if a is not an Argon2id entry.
+func Argon2idParams(a Alg) (salt []byte, memKiB, passes uint32, ok bool) {
+	e, ok := a.(*argon2idAlg)
+	if !ok || e.threads != 1 {
+		return nil, 0, 0, false
+	}
+	return append([]byte(nil), e.salt...), e.memKiB, e.time, true
+}
+
 // Eval is a.H(x), except that it returns ctx's error as soon as ctx is done,
 // without waiting for the step. Sealing, extending and solving all evaluate
 // through it, so cancelling them returns at once rather than after a step of

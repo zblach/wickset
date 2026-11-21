@@ -5,3 +5,5 @@ go.work.sum
 # chainlock files
 *.chainlock.tar
 *.key
+*.lock
+*.payload
