@@ -1,0 +1,19 @@
+
+   chainlock   sequential-delay lock
+
+  Open  Wait out a lock and decrypt its file
+
+  ┃ Lock
+  ┃ A .lock file (with its .payload next to it), or a .chainlock.tar.
+  ┃ >
+
+    Save as
+    Optional. Where to write the decrypted file.
+    > same name, without the extension
+
+    Key file
+    Optional. Saves the key, so you can open it again later with no wait.
+    >
+
+  tab complete · enter next · esc menu
+

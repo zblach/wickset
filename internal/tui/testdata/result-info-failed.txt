@@ -1,0 +1,8 @@
+
+   chainlock   sequential-delay lock
+
+  ✗ Checking notes.txt failed
+  notes.txt: chainlock: malformed object
+
+  enter menu · q quit
+

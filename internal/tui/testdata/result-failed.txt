@@ -1,0 +1,8 @@
+
+   chainlock   sequential-delay lock
+
+  ✗ Opening notes.txt.lock failed
+  notes.txt already exists; choose another name under "Save as"
+
+  enter menu · q quit
+

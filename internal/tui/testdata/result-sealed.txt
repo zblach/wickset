@@ -1,0 +1,18 @@
+
+   chainlock   sequential-delay lock
+
+  ✓ Sealed notes.txt in 3h2m
+
+  ✓ notes.txt.lock (3.5 MiB, N=113692, 113693 steps)
+  ✓ notes.txt.payload (108 B, encrypted)
+  ✓ key to notes.key: it opens the encrypted file at once, without solving
+
+  ⚠ argon2id-m256M-t3-p1 uses 256 MiB per evaluation; 4 parallel workers need 1 GiB (set fewer
+  workers to lower)
+
+  · algorithm 0x01 (argon2id-m256M-t3-p1) for a delay of 12h (no algorithm given; 0x02 from 1d up)
+  · measured step 380ms → 113693 sequential steps for 12h on this machine
+  · sealing computes all 113693 steps, the solver's whole work, split 4 ways: at least 3h0m0s here
+
+  enter menu · q quit
+

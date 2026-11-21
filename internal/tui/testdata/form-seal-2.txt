@@ -1,0 +1,26 @@
+
+   chainlock   sequential-delay lock
+
+  Seal  Lock a file so it opens only after a delay  (2 of 2)
+
+  ┃ Algorithm
+  ┃ Suggested for a 12h delay: 0x01 (argon2id-m256M-t3-p1).
+  ┃ > 0x01  argon2id-m256M-t3-p1   256 MiB a step
+  ┃   0x02  argon2id-m1G-t30-p1    1 GiB a step
+
+    Save as
+    > two files     notes.txt.lock and notes.txt.payload
+      one archive   notes.txt.chainlock.tar
+      raw files     no damage check
+
+    Workers
+    Steps computed at once. 0 or -1: one per core (4 here).
+    > 0
+
+    Key file
+    Optional. Saves a key that opens the file at once, with no wait.
+    Keep it somewhere other than the lock.
+    >
+
+  ↑ up · ↓ down · enter select · esc back · ? details
+

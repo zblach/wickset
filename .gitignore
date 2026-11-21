@@ -1,0 +1,7 @@
+# sandbox-only workspace file (replace directives for offline builds)
+go.work
+go.work.sum
+
+# chainlock files
+*.chainlock.tar
+*.key

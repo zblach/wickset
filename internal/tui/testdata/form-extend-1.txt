@@ -1,0 +1,24 @@
+
+   chainlock   sequential-delay lock
+
+  Extend  Make a lock take longer to open
+
+  ┃ Lock
+  ┃ A .lock file (with its .payload next to it), or a .chainlock.tar.
+  ┃ >
+
+    Add
+    How much longer opening it should take, such as 2h or 1w.
+    Or an exact number of steps.
+    > 12h
+
+    Save as
+    Optional. Where to write the longer lock.
+    > update the lock in place
+
+    Workers
+    Steps computed at once. 0 or -1: one per core (4 here).
+    > 0
+
+  tab complete · enter next · esc menu
+
