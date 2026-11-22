@@ -15,10 +15,22 @@ import (
 	"chainlock/chain"
 )
 
-// TestSealWithGPU seals a real 0x01 lock on the GPU, then opens it on the
-// CPU, as any solver would: the GPU's steps are exactly the CPU's, or the
-// plaintext never comes back.
+// TestSealWithGPU seals real short-step locks on the GPU, then opens them on
+// the CPU, as any solver would: the GPU's steps are exactly the CPU's, or the
+// plaintext never comes back. The SHA-256 chain, ~45 s of one GPU thread a
+// step, runs without -short.
 func TestSealWithGPU(t *testing.T) {
+	for _, id := range []alg.ID{alg.Argon2idShort, alg.SHA256Short} {
+		t.Run(id.String(), func(t *testing.T) {
+			if testing.Short() && id == alg.SHA256Short {
+				t.Skip("~45 s a step on the GPU: skipped with -short")
+			}
+			sealWithGPU(t, id)
+		})
+	}
+}
+
+func sealWithGPU(t *testing.T, id alg.ID) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "plain")
 	plaintext := []byte("sealed partly on the GPU")
@@ -40,7 +52,7 @@ func TestSealWithGPU(t *testing.T) {
 			}
 		},
 	}
-	a, _ := alg.Lookup(alg.Argon2id256M)
+	a, _ := alg.Lookup(id)
 	start := time.Now()
 	e.GPU = true
 	if err := e.Seal(t.Context(), SealArgs{File: file, Alg: a, N: 59, Workers: 2}); err != nil {

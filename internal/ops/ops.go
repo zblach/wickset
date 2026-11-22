@@ -56,8 +56,8 @@ func (e *Env) Seal(ctx context.Context, a SealArgs) error {
 		return err
 	}
 	if a.Alg == nil {
-		a.Alg = AlgFor(a.Delay)
-		e.note(Detail, "algorithm %v for a delay of %s (no algorithm given; 0x02 from %s up)", a.Alg.ID(), FormatDelay(a.Delay), FormatDelay(LongDelay))
+		a.Alg = AlgFor(a.Delay, e.GPU)
+		e.note(Detail, "algorithm %v for a delay of %s (no algorithm given; the long step from %s up)", a.Alg.ID(), FormatDelay(a.Delay), FormatDelay(LongDelay))
 	}
 	opts, b, gpu, err := e.withGPU(a.Alg, chain.Opts{Workers: a.Workers})
 	if err != nil {

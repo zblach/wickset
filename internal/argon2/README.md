@@ -10,7 +10,7 @@ of it; nothing else differs, and the changed lines say `[chainlock]`.
 `SHA256SUMS` records the files as vendored, and `TestVendored` fails if any
 changes. `hasher.go` and `chainlock_test.go` are chainlock's: the API every
 Argon2id backend implements (`Hasher`: this CPU one, and the GPU in
-`internal/argon2gpu`), and the tests holding this copy to x/crypto itself.
+`internal/gpu`), and the tests holding this copy to x/crypto itself.
 
 To update: copy the files of a newer x/crypto, re-apply the patch
 (`patch argon2.go < argon2.go.patch`), regenerate the sums

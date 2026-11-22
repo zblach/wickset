@@ -74,7 +74,7 @@ var frames = map[string]runFrame{
 		stepAvg: 480 * time.Millisecond, rate: 8, eta: 3*time.Hour + 56*time.Minute,
 		notes: []ops.Note{
 			{Kind: ops.Detail, Text: "measured step 380ms → 113693 sequential steps for 12h on this machine"},
-			{Kind: ops.Warning, Text: "argon2id-m256M-t3-p1 uses 256 MiB per evaluation; 4 parallel workers need 1 GiB (set fewer workers to lower)"},
+			{Kind: ops.Warning, Text: "argon2id-m128M-t5-p1 uses 128 MiB per evaluation; 8 parallel workers need 1 GiB (set fewer workers to lower)"},
 		},
 	}},
 	"measuring-confirm": {title: "Sealing notes.txt", start: t0.Add(-6 * time.Second), now: t0, confirm: true, run: snapshot{
@@ -86,11 +86,11 @@ var frames = map[string]runFrame{
 // results are synthetic result screens.
 var results = map[string]*result{
 	"info": {title: "Checking notes.txt.lock", act: actInfo, elapsed: 7 * time.Millisecond, value: &ops.Info{
-		Alg: mustAlg(alg.Argon2id1GT30), N: 76000, Size: 1 + 76002*32, Form: store.FormFile,
+		Alg: mustAlg(alg.Argon2idLong), N: 76000, Size: 1 + 76002*32, Form: store.FormFile,
 		PayloadWhere: "notes.txt.payload",
 	}},
-	"bench": {title: "Timing 0x01 (argon2id-m256M-t3-p1)", act: actBench, elapsed: 1100 * time.Millisecond, value: ops.Bench{
-		Alg: mustAlg(alg.Argon2id256M), Step: 353 * time.Millisecond,
+	"bench": {title: "Timing 0x01 (argon2id-m128M-t5-p1)", act: actBench, elapsed: 1100 * time.Millisecond, value: ops.Bench{
+		Alg: mustAlg(alg.Argon2idShort), Step: 353 * time.Millisecond,
 		Rounds: []ops.BenchRound{{At: 2, Rate: 4.8}, {At: 4, Rate: 7.5}},
 		Rows: []ops.BenchRow{
 			{N: 0, Solve: 353 * time.Millisecond, Seal: 353 * time.Millisecond, Size: 65},
@@ -102,14 +102,14 @@ var results = map[string]*result{
 		err: errors.New("notes.txt already exists; give --out to choose where the plaintext goes")},
 	"cancelled": {title: "Sealing notes.txt", act: actSeal, cancelled: true, err: context.Canceled},
 	// Bench and Info return their zero value with an error: no panel, no panic.
-	"bench-cancelled": {title: "Timing 0x02 (argon2id-m1G-t30-p1)", act: actBench, cancelled: true,
+	"bench-cancelled": {title: "Timing 0x02 (argon2id-m128M-t192-p1)", act: actBench, cancelled: true,
 		err: context.Canceled, value: ops.Bench{}},
 	"info-failed": {title: "Checking notes.txt", act: actInfo, err: errors.New("notes.txt: chainlock: malformed object"),
 		value: (*ops.Info)(nil)},
 	"sealed": {title: "Sealing notes.txt", act: actSeal, elapsed: 3*time.Hour + 2*time.Minute, notes: []ops.Note{
-		{Kind: ops.Detail, Text: "algorithm 0x01 (argon2id-m256M-t3-p1) for a delay of 12h (no algorithm given; 0x02 from 1d up)"},
+		{Kind: ops.Detail, Text: "algorithm 0x01 (argon2id-m128M-t5-p1) for a delay of 12h (no algorithm given; the long step from 1d up)"},
 		{Kind: ops.Detail, Text: "measured step 380ms → 113693 sequential steps for 12h on this machine"},
-		{Kind: ops.Warning, Text: "argon2id-m256M-t3-p1 uses 256 MiB per evaluation; 4 parallel workers need 1 GiB (set fewer workers to lower)"},
+		{Kind: ops.Warning, Text: "argon2id-m128M-t5-p1 uses 128 MiB per evaluation; 8 parallel workers need 1 GiB (set fewer workers to lower)"},
 		{Kind: ops.Detail, Text: "sealing computes all 113693 steps, the solver's whole work, split 4 ways: at least 3h0m0s here"},
 		{Kind: ops.Wrote, Text: "wrote notes.txt.lock (3.5 MiB, N=113692, 113693 steps)"},
 		{Kind: ops.Wrote, Text: "wrote notes.txt.payload (108 B, encrypted)"},
@@ -168,7 +168,7 @@ func TestRenderedScreens(t *testing.T) {
 	m.gpu = false
 	for act := range action(len(actions)) {
 		for page := range pages(act) {
-			m.screen, m.act, m.page, m.in = formScreen, act, page, &inputs{Steps: "12h", Alg: alg.Argon2id256M}
+			m.screen, m.act, m.page, m.in = formScreen, act, page, &inputs{Steps: "12h", Alg: alg.Argon2idShort}
 			if page > 0 {
 				m.in.File = "notes.txt" // as page 1 collected it
 			}

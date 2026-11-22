@@ -13,7 +13,7 @@ import (
 // Benchmarks for the real algorithms. Run one at a time, so peak RSS belongs
 // to that benchmark:
 //
-//	go test -run '^$' -bench 'Step/argon2id-m256M' -benchtime 8x ./chain
+//	go test -run '^$' -bench 'Step/argon2id-m128M-t5' -benchtime 8x ./chain
 
 // reportPeakRSS reports the process's peak resident set size so far.
 func reportPeakRSS(b *testing.B) {
@@ -45,7 +45,7 @@ func BenchmarkStep(b *testing.B) {
 // BenchmarkBuildParallel builds a 0x01 object with N = 7 on four workers,
 // as sealing does: eight evaluations of H, four at a time.
 func BenchmarkBuildParallel(b *testing.B) {
-	a, _ := alg.Lookup(alg.Argon2id256M)
+	a, _ := alg.Lookup(alg.Argon2idShort)
 	xs, err := randBlocks(8, a.BlockSize())
 	if err != nil {
 		b.Fatal(err)
@@ -62,7 +62,7 @@ func BenchmarkBuildParallel(b *testing.B) {
 
 // BenchmarkSolveN7 is a full sequential solve of eight steps on 0x01.
 func BenchmarkSolveN7(b *testing.B) {
-	a, _ := alg.Lookup(alg.Argon2id256M)
+	a, _ := alg.Lookup(alg.Argon2idShort)
 	o, err := Parse(append([]byte{byte(a.ID())}, make([]byte, 9*a.BlockSize())...))
 	if err != nil {
 		b.Fatal(err)

@@ -202,7 +202,7 @@ func TestSealByDelay(t *testing.T) {
 	if !strings.Contains(r.stderr, "algorithm 0x01") || !strings.Contains(r.stderr, "measuring") {
 		t.Fatalf("auto choice or measuring not reported:\n%s", r.stderr)
 	}
-	wantInfo(t, plain+".chainlock.tar", "alg", "0x01 (argon2id-m256M-t3-p1) (B = 32)")
+	wantInfo(t, plain+".chainlock.tar", "alg", "0x01 (argon2id-m128M-t5-p1) (B = 32)")
 }
 
 // TestArchive: seal --archive writes one tar holding the usual pair, which
@@ -401,7 +401,7 @@ func TestKeyBypass(t *testing.T) {
 func TestRejectsUndefined(t *testing.T) {
 	dir := t.TempDir()
 	plain, _ := writePlain(t, dir, "plain")
-	for _, alg := range []string{"0xF0", "0x03", "0", "256", "nope", "argon2id-m1G-t3-p1"} {
+	for _, alg := range []string{"0xF0", "0x05", "0", "256", "nope", "argon2id-m1G-t30-p1"} {
 		wantFail(t, 2, "--alg", "seal", "--alg", alg, "-n", "1", plain)
 	}
 	f0 := filepath.Join(dir, "f0.lock")

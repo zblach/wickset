@@ -2,7 +2,9 @@ package alg
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -44,10 +46,41 @@ func TestEvalCancels(t *testing.T) {
 	}
 }
 
+// TestSHA256Chain: a chain is K hashes, the first of the domain and x, as
+// SPEC.md §3.3 defines it, whatever the chunking; Run reports each chunk and
+// stops between them on cancel.
+func TestSHA256Chain(t *testing.T) {
+	c := SHA256Chain{Domain: []byte("chainlock/v1::test"), K: 3*chunk + 5}
+	x := []byte("an input of thirty-two bytes....")
+	want := sha256.Sum256(append([]byte("chainlock/v1::test"), x...))
+	for range c.K - 1 {
+		want = sha256.Sum256(want[:])
+	}
+	var reports []uint64
+	got, err := c.Run(t.Context(), c.Start(x), c.K-1, func(done uint64) { reports = append(reports, done) })
+	if err != nil || got != want {
+		t.Fatalf("chain %x, %v; want %x", got, err, want)
+	}
+	if fmt.Sprint(reports) != fmt.Sprint([]uint64{chunk, 2 * chunk, 3 * chunk, 3*chunk + 4}) {
+		t.Fatalf("reports %v", reports)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	n := 0
+	if _, err := c.Run(ctx, want, c.K, func(uint64) { n++; cancel() }); !errors.Is(err, context.Canceled) || n != 1 {
+		t.Fatalf("cancelled: %v after %d chunks", err, n)
+	}
+	for _, id := range []ID{SHA256Short, SHA256Long} {
+		a, _ := Lookup(id)
+		if c, ok := SHA256ChainOf(a); !ok || string(c.Domain) != fmt.Sprintf("chainlock/v1::%02x", byte(id)) {
+			t.Fatalf("%v: domain %q", id, c.Domain)
+		}
+	}
+}
+
 func TestRegistryIsClosed(t *testing.T) {
 	// Literal SPEC.md §3 values, deliberately not the ID constants: the
 	// constants come from iota, and this catches a reorder.
-	want := map[byte]int{0x01: 32, 0x02: 32}
+	want := map[byte]int{0x01: 32, 0x02: 32, 0x03: 32, 0x04: 32}
 	if testAlgsBuilt {
 		want[0xFE], want[0xFF] = 32, 16 // testalgs.go
 	}
@@ -64,10 +97,10 @@ func TestRegistryIsClosed(t *testing.T) {
 	if got := len(All()); got != len(want) {
 		t.Fatalf("All() = %d entries, want %d", got, len(want))
 	}
-	if Argon2id256M != 0x01 || Argon2id1GT30 != 0x02 {
+	if Argon2idShort != 0x01 || Argon2idLong != 0x02 || SHA256Short != 0x03 || SHA256Long != 0x04 {
 		t.Fatalf("ID constants drifted from SPEC.md §3")
 	}
-	if got := Argon2id256M.String(); got != "0x01 (argon2id-m256M-t3-p1)" {
+	if got := Argon2idShort.String(); got != "0x01 (argon2id-m128M-t5-p1)" {
 		t.Fatalf("String() = %q", got)
 	}
 	if got := ID(0xF0).String(); got != "0xf0 (undefined)" {

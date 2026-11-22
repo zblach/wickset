@@ -74,6 +74,7 @@ type inputs struct {
 	Key     string
 	KeyOut  string
 	Workers string // seal and extend; empty means every core
+	GPU     bool   // GPU mode, from the start: it chooses the suggested algorithm
 }
 
 // args turns what a form collected into the arguments of the operation it

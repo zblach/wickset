@@ -5,6 +5,7 @@ package alg
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"runtime"
@@ -20,12 +21,14 @@ var ErrUnknown = errors.New("chainlock: algorithm id not defined")
 type ID byte
 
 // Defined algorithms. The values are wire format, fixed by SPEC.md §3:
-// append only, never reorder or remove. 0x02's step is about 40× 0x01's (4×
-// the memory, 10× the passes), for a smaller object at long delays.
+// append only, never reorder or remove. Each family has a short step and a
+// long one; README.md says how their parameters were chosen.
 const (
 	_             ID = iota // 0x00 is never defined
-	Argon2id256M            // 0x01: Argon2id, 256 MiB, t = 3; SPEC.md §3.1
-	Argon2id1GT30           // 0x02: Argon2id, 1 GiB, t = 30; SPEC.md §3.2
+	Argon2idShort           // 0x01: Argon2id, 128 MiB, t = 5; SPEC.md §3.1
+	Argon2idLong            // 0x02: Argon2id, 128 MiB, t = 192; SPEC.md §3.2
+	SHA256Short             // 0x03: SHA-256 chain, K = 2^23; SPEC.md §3.3
+	SHA256Long              // 0x04: SHA-256 chain, K = 2^28; SPEC.md §3.4
 	idMax                   // one past the last defined id; not an algorithm
 )
 
@@ -109,12 +112,81 @@ func Argon2idParams(a Alg) (p argon2.Params, ok bool) {
 	return p, true
 }
 
+// SHA256Chain is a SHA-256 chain entry's step (SPEC.md §3.3): K hashes, the
+// first of Domain ‖ x, each one after of the 32 bytes before it.
+type SHA256Chain struct {
+	Domain []byte
+	K      uint64
+}
+
+// Start is the chain's first hash, of Domain ‖ x: what the other K-1 run on.
+func (c SHA256Chain) Start(x []byte) [32]byte {
+	return sha256.Sum256(append(c.Domain[:len(c.Domain):len(c.Domain)], x...))
+}
+
+// chunk is how many hashes Run takes between looks at ctx and reports.
+const chunk = 1 << 20
+
+// Run hashes h n times over, in chunks; after each it reports the hashes
+// done so far, if report is set, and stops with ctx's error once ctx is done.
+func (c SHA256Chain) Run(ctx context.Context, h [32]byte, n uint64, report func(done uint64)) ([32]byte, error) {
+	for done := uint64(0); done < n; {
+		if err := ctx.Err(); err != nil {
+			return h, err
+		}
+		m := min(n-done, chunk)
+		for range m {
+			h = sha256.Sum256(h[:])
+		}
+		done += m
+		if report != nil {
+			report(done)
+		}
+	}
+	return h, nil
+}
+
+// sha256Alg is a SHA-256 chain registry entry (SPEC.md §3.3).
+type sha256Alg struct {
+	id    ID
+	name  string
+	chain SHA256Chain // the domain includes the entry's own id
+}
+
+func (a *sha256Alg) ID() ID         { return a.id }
+func (a *sha256Alg) Name() string   { return a.name }
+func (a *sha256Alg) BlockSize() int { return sha256.Size }
+func (a *sha256Alg) MemBytes() int  { return 0 }
+
+func (a *sha256Alg) H(x []byte) []byte {
+	out, _ := a.eval(context.Background(), x)
+	return out
+}
+
+func (a *sha256Alg) eval(ctx context.Context, x []byte) ([]byte, error) {
+	h, err := a.chain.Run(ctx, a.chain.Start(x), a.chain.K-1, nil)
+	if err != nil {
+		return nil, err
+	}
+	return h[:], nil
+}
+
+// SHA256ChainOf is a's chain, for timing part of a step or running the chain
+// elsewhere (a GPU). ok is false if a is not a SHA-256 chain entry.
+func SHA256ChainOf(a Alg) (c SHA256Chain, ok bool) {
+	e, ok := a.(*sha256Alg)
+	if !ok {
+		return SHA256Chain{}, false
+	}
+	return e.chain, true
+}
+
 // Eval is a.H(x), except that it returns ctx's error once ctx is done.
 // Sealing, extending and solving all evaluate through it, so cancelling them
 // returns at once rather than after a step of up to tens of seconds. The
-// Argon2id entries stop mid-step, within a quarter pass, freeing their core
-// and memory; any other step is left to finish in the background, and its
-// result dropped.
+// defined entries stop mid-step, within a quarter pass or a chunk of hashes,
+// freeing their core and memory; any other step is left to finish in the
+// background, and its result dropped.
 func Eval(ctx context.Context, a Alg, x []byte) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -146,11 +218,17 @@ type evaler interface {
 // never in either table; those tests hand them straight to chain's internal
 // functions.
 var registry = [idMax]Alg{
-	Argon2id256M: &argon2idAlg{id: Argon2id256M, name: "argon2id-m256M-t3-p1", params: argon2.Params{
-		Salt: []byte("chainlock/v1::01"), MemoryKiB: 262144, Passes: 3, KeyLen: 32,
+	Argon2idShort: &argon2idAlg{id: Argon2idShort, name: "argon2id-m128M-t5-p1", params: argon2.Params{
+		Salt: []byte("chainlock/v1::01"), MemoryKiB: 131072, Passes: 5, KeyLen: 32,
 	}},
-	Argon2id1GT30: &argon2idAlg{id: Argon2id1GT30, name: "argon2id-m1G-t30-p1", params: argon2.Params{
-		Salt: []byte("chainlock/v1::02"), MemoryKiB: 1048576, Passes: 30, KeyLen: 32,
+	Argon2idLong: &argon2idAlg{id: Argon2idLong, name: "argon2id-m128M-t192-p1", params: argon2.Params{
+		Salt: []byte("chainlock/v1::02"), MemoryKiB: 131072, Passes: 192, KeyLen: 32,
+	}},
+	SHA256Short: &sha256Alg{id: SHA256Short, name: "sha256-chain-k23", chain: SHA256Chain{
+		Domain: []byte("chainlock/v1::03"), K: 1 << 23,
+	}},
+	SHA256Long: &sha256Alg{id: SHA256Long, name: "sha256-chain-k28", chain: SHA256Chain{
+		Domain: []byte("chainlock/v1::04"), K: 1 << 28,
 	}},
 }
 

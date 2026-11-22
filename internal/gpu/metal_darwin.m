@@ -10,7 +10,7 @@
 struct clm {
   id<MTLDevice> dev;
   id<MTLCommandQueue> queue;
-  id<MTLComputePipelineState> init, fill, final;
+  id<MTLComputePipelineState> init, fill, final, sha;
 };
 
 struct clm_job {
@@ -46,6 +46,7 @@ void clm_close(clm *c) {
   [c->init release];
   [c->fill release];
   [c->final release];
+  [c->sha release];
   [c->queue release];
   [c->dev release];
   free(c);
@@ -86,8 +87,9 @@ clm *clm_open(const char *source, const char *macros, char **err) {
     c->init = pipeline(c->dev, lib, @"chainlock_argon2_init", err);
     if (c->init != nil) c->fill = pipeline(c->dev, lib, @"chainlock_argon2_fill", err);
     if (c->fill != nil) c->final = pipeline(c->dev, lib, @"chainlock_argon2_final", err);
+    if (c->final != nil) c->sha = pipeline(c->dev, lib, @"chainlock_sha256_iter", err);
     [lib release];
-    if (c->final == nil) {
+    if (c->sha == nil) {
       clm_close(c);
       return NULL;
     }
@@ -193,6 +195,26 @@ int clm_segment(clm *c, clm_job *j, uint32_t pass, uint32_t slice, char **err) {
     return run(c, c->fill, @[ j->job, j->blocks ], pos, sizeof pos, 1, 0, j->count, err);
   }
 }
+
+void *clm_sha_begin(clm *c, const void *state, size_t len) {
+  return [c->dev newBufferWithBytes:state length:len options:MTLResourceStorageModeShared];
+}
+
+int clm_sha_iter(clm *c, void *state, uint32_t count, uint32_t iters, char **err) {
+  @autoreleasepool {
+    uint32_t job[2] = {count, iters};
+    id<MTLBuffer> s = (id<MTLBuffer>)state;
+    // job is buffer 0, state 1
+    return run(c, c->sha, @[ s ], job, sizeof job, 0, count, 0, err);
+  }
+}
+
+void clm_sha_read(void *state, void *out, size_t len) {
+  id<MTLBuffer> s = (id<MTLBuffer>)state;
+  memcpy(out, s.contents, len);
+}
+
+void clm_sha_end(void *state) { [(id<MTLBuffer>)state release]; }
 
 int clm_end(clm *c, clm_job *j, void *out, char **err) {
   @autoreleasepool {

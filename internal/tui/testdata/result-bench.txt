@@ -1,10 +1,10 @@
 
    chainlock
 
-  ✓ Timed 0x01 (argon2id-m256M-t3-p1) in 1s
+  ✓ Timed 0x01 (argon2id-m128M-t5-p1) in 1s
 
   ╭──────────────────────────────────────────────────────────────────────╮
-  │ 0x01 (argon2id-m256M-t3-p1): 353ms a step on one core (fastest of 3) │
+  │ 0x01 (argon2id-m128M-t5-p1): 353ms a step on one core (fastest of 3) │
   │                                                                      │
   │ steps    opens in ≈  seals in ≈  lock size                           │
   │ 1        353ms       353ms       65 B                                │

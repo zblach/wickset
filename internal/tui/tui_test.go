@@ -158,11 +158,11 @@ func TestSealPages(t *testing.T) {
 		want  alg.ID
 		why   string
 	}{
-		{"8h", alg.Argon2id256M, "Suggested for a 8h delay: 0x01 (argon2id-m256M-t3-p1)."},
-		{"36h", alg.Argon2id1GT30, "Suggested for a 1d 12h delay: 0x02 (argon2id-m1G-t30-p1)."},
-		{"2 weeks", alg.Argon2id1GT30, "Suggested for a 2w delay: 0x02"},
-		{"6M", alg.Argon2id1GT30, "0x02"},
-		{"336h", alg.Argon2id1GT30, "0x02"},
+		{"8h", alg.Argon2idShort, "Suggested for a 8h delay: 0x01 (argon2id-m128M-t5-p1)."},
+		{"36h", alg.Argon2idLong, "Suggested for a 1d 12h delay: 0x02 (argon2id-m128M-t192-p1)."},
+		{"2 weeks", alg.Argon2idLong, "Suggested for a 2w delay: 0x02"},
+		{"6M", alg.Argon2idLong, "0x02"},
+		{"336h", alg.Argon2idLong, "0x02"},
 	} {
 		m.in.Steps = c.steps
 		m.Update(submitMsg{})
@@ -178,13 +178,13 @@ func TestSealPages(t *testing.T) {
 	// N keeps whatever was picked (here: 0x02, from 336h).
 	m.in.Steps = "5"
 	m.Update(submitMsg{})
-	if m.in.Alg != alg.Argon2id1GT30 || !strings.Contains(view(m), "N = 5: 6 steps") {
+	if m.in.Alg != alg.Argon2idLong || !strings.Contains(view(m), "N = 5: 6 steps") {
 		t.Fatalf("N: alg %v\n%s", m.in.Alg, view(m))
 	}
 	if a := args(actSeal, m.in).(ops.SealArgs); a.Alg == nil || a.N != 5 || a.Delay != 0 {
 		t.Fatalf("seal args %+v", a)
 	}
-	if d := defaultAlg(&inputs{Steps: "5"}); d != alg.Argon2id256M {
+	if d := defaultAlg(&inputs{Steps: "5"}); d != alg.Argon2idShort {
 		t.Fatalf("fresh N defaults to %v", d)
 	}
 }
@@ -211,7 +211,7 @@ func TestHelpPanel(t *testing.T) {
 		t.Fatalf("page 2:\n%s", v)
 	}
 	press(m, question) // the algorithm select is focused
-	if v := view(m); !m.details || !strings.Contains(v, "about 40× as long as 0x01's") {
+	if v := view(m); !m.details || !strings.Contains(v, "0x04  SHA-256 chain, long step") {
 		t.Fatalf("? on page 2:\n%s", v)
 	}
 	press(m, question)

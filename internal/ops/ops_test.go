@@ -152,15 +152,20 @@ func TestFormatDelay(t *testing.T) {
 func TestAlgFor(t *testing.T) {
 	for _, c := range []struct {
 		d    time.Duration
+		gpu  bool
 		want alg.ID
 	}{
-		{time.Minute, alg.Argon2id256M},
-		{LongDelay - time.Second, alg.Argon2id256M},
-		{LongDelay, alg.Argon2id1GT30},
-		{14 * 24 * time.Hour, alg.Argon2id1GT30},
+		{time.Minute, false, alg.Argon2idShort},
+		{LongDelay - time.Second, false, alg.Argon2idShort},
+		{LongDelay, false, alg.Argon2idLong},
+		{14 * 24 * time.Hour, false, alg.Argon2idLong},
+		{time.Minute, true, alg.SHA256Short},
+		{LongDelay - time.Second, true, alg.SHA256Short},
+		{LongDelay, true, alg.SHA256Long},
+		{14 * 24 * time.Hour, true, alg.SHA256Long},
 	} {
-		if got := AlgFor(c.d).ID(); got != c.want {
-			t.Errorf("AlgFor(%v) = %v, want %v", c.d, got, c.want)
+		if got := AlgFor(c.d, c.gpu).ID(); got != c.want {
+			t.Errorf("AlgFor(%v, gpu %v) = %v, want %v", c.d, c.gpu, got, c.want)
 		}
 	}
 }

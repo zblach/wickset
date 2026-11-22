@@ -12,7 +12,7 @@ import (
 // zeroObject is a well-formed 0x01 object with N = 1. Loading it evaluates no
 // step, so it costs nothing.
 func zeroObject() []byte {
-	return append([]byte{byte(alg.Argon2id256M)}, make([]byte, 3*32)...)
+	return append([]byte{byte(alg.Argon2idShort)}, make([]byte, 3*32)...)
 }
 
 func TestArchiveRoundTrip(t *testing.T) {

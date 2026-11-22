@@ -135,29 +135,32 @@ func algOptions() []huh.Option[alg.ID] {
 // algLabel is an algorithm's id, name and memory per step.
 func algLabel(a alg.Alg) string {
 	mem := "no real delay"
-	if a.MemBytes() > 0 {
+	if _, ok := alg.SHA256ChainOf(a); ok {
+		mem = "no memory"
+	} else if a.MemBytes() > 0 {
 		mem = ops.Bytes(int64(a.MemBytes())) + " a step"
 	}
 	return fmt.Sprintf("%#02x  %-22s %s", byte(a.ID()), a.Name(), mem)
 }
 
 // defaultAlg is the algorithm a form offers first. A delay chooses as the
-// CLI does (ops.AlgFor); a step count keeps an earlier pick, or 0x01.
+// CLI does (ops.AlgFor); a step count keeps an earlier pick, or the short
+// step.
 func defaultAlg(in *inputs) alg.ID {
 	if _, d, err := parseSteps(in.Steps); err == nil && d > 0 {
-		return ops.AlgFor(d).ID()
+		return ops.AlgFor(d, in.GPU).ID()
 	}
 	if _, ok := alg.Lookup(in.Alg); ok {
 		return in.Alg
 	}
-	return alg.Argon2id256M
+	return ops.AlgFor(0, in.GPU).ID()
 }
 
 // algReason says, in one line under the title, why the default is what it is.
 func algReason(in *inputs) string {
 	n, d, _ := parseSteps(in.Steps)
 	if d > 0 {
-		return fmt.Sprintf("Suggested for a %s delay: %s.", ops.FormatDelay(d), ops.AlgFor(d).ID())
+		return fmt.Sprintf("Suggested for a %s delay: %s.", ops.FormatDelay(d), ops.AlgFor(d, in.GPU).ID())
 	}
 	return fmt.Sprintf("N = %d: %d steps of the algorithm chosen here.", n, n+1)
 }
@@ -180,12 +183,15 @@ Sealing does as much work as the wait itself, shared across your cores:
 a 12h lock takes 3h or more to make on 4 cores.`
 	case act == actSeal:
 		return fmt.Sprintf(`Algorithm
-  0x01  Argon2id, 256 MiB, 3 passes over it per step
-  0x02  Argon2id, 1 GiB, 30 passes: a step about 40× as long as 0x01's
-  A longer step means fewer steps for the same delay, so a smaller lock
-  file; sealing takes the same time either way. Each worker needs the
-  algorithm's memory. Suggested: 0x02 from %v up, 0x01 below.
-  Bench shows what a step takes on this machine.
+  0x01  Argon2id, 128 MiB, short step   memory-hard
+  0x02  Argon2id, 128 MiB, long step
+  0x03  SHA-256 chain, short step       seals far faster on a GPU
+  0x04  SHA-256 chain, long step
+
+  A long step means fewer steps for the same delay, so a smaller lock
+  file. Suggested: the long step from %v up; SHA-256 with the GPU,
+  Argon2id without. Bench shows what a step takes here; README.md
+  compares them.
 
 Save as
   two files     the lock and the encrypted file; damage is caught early

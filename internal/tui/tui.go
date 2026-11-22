@@ -207,7 +207,7 @@ func (m *model) key(k tea.KeyPressMsg) (tea.Cmd, bool) {
 // suit. (guess chose which action the menu offers first.)
 func (m *model) pick(act action) tea.Cmd {
 	m.act, m.cursor, m.screen, m.page = act, act, formScreen, 0
-	m.in = &inputs{File: m.initial}
+	m.in = &inputs{File: m.initial, GPU: m.gpu}
 	m.in.Alg = defaultAlg(m.in)
 	return m.openForm()
 }

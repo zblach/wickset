@@ -1,10 +1,11 @@
-// Package argon2gpu runs Argon2id on a GPU, many independent evaluations of
-// one parameter set at a time, as sealing needs. Its Device is an
-// argon2.Hasher, like internal/argon2's CPU. The Argon2 is hashcat's kernel
-// (hashcat/, vendored unmodified); this package is only the host that loads
-// it and moves inputs and outputs, and its tests hold every result to
-// x/crypto's.
-package argon2gpu
+// Package gpu runs chainlock's step functions on a GPU, many independent
+// evaluations at a time, as sealing needs: Argon2id (its Device is an
+// argon2.Hasher, like internal/argon2's CPU) and SHA-256 chains. The hashing
+// is hashcat's (hashcat/, vendored unmodified); this package is only the
+// kernels' entry points and the host that loads them and moves inputs and
+// outputs, and its tests hold every result to x/crypto's and the standard
+// library's.
+package gpu
 
 import (
 	"embed"
@@ -18,9 +19,13 @@ import (
 )
 
 // ErrUnavailable reports a build or machine with no supported GPU.
-var ErrUnavailable = errors.New("argon2gpu: no supported GPU in this build")
+var ErrUnavailable = errors.New("gpu: no supported GPU in this build")
 
 const (
+	chainDispatch = 1 << 13 // hashes a chain advances per dispatch: under a second, however many run
+	minChains     = 1 << 10 // the range ChainBatch searches
+	maxChains     = 1 << 20
+
 	syncPoints = 4
 	blockSize  = 1024 // bytes in an Argon2 block
 	maxBytes   = 256  // the most input or salt the kernel copies
@@ -38,13 +43,13 @@ func instanceBytes(p argon2.Params) uint64 { return uint64(blocks(p)) * blockSiz
 func check(p argon2.Params, inputLen int) error {
 	switch {
 	case p.Passes < 1:
-		return errors.New("argon2gpu: no passes")
+		return errors.New("gpu: no passes")
 	case p.KeyLen == 0 || p.KeyLen%8 != 0 || p.KeyLen > 64:
-		return fmt.Errorf("argon2gpu: key length %d is not a multiple of 8 up to 64", p.KeyLen)
+		return fmt.Errorf("gpu: key length %d is not a multiple of 8 up to 64", p.KeyLen)
 	case len(p.Salt) > maxBytes:
-		return fmt.Errorf("argon2gpu: salt of %d bytes is over %d", len(p.Salt), maxBytes)
+		return fmt.Errorf("gpu: salt of %d bytes is over %d", len(p.Salt), maxBytes)
 	case inputLen%4 != 0 || inputLen > maxBytes:
-		return fmt.Errorf("argon2gpu: input of %d bytes is not a multiple of 4 up to %d", inputLen, maxBytes)
+		return fmt.Errorf("gpu: input of %d bytes is not a multiple of 4 up to %d", inputLen, maxBytes)
 	}
 	return nil
 }
@@ -76,7 +81,7 @@ func job(p argon2.Params, count, inputLen int) []byte {
 	return append(out, salt[:]...)
 }
 
-//go:embed kernel.cl hashcat/inc_* hashcat/license.txt hashcat/SHA256SUMS
+//go:embed kernel.cl sha256.cl hashcat/inc_* hashcat/license.txt hashcat/SHA256SUMS
 var files embed.FS
 
 // include matches the two forms of #include hashcat's sources use.
@@ -114,8 +119,10 @@ func source() (string, error) {
 		}
 		return nil
 	}
-	if err := expand("kernel.cl", "kernel.cl"); err != nil {
-		return "", err
+	for _, k := range []string{"kernel.cl", "sha256.cl"} {
+		if err := expand(k, k); err != nil {
+			return "", err
+		}
 	}
 	return b.String(), nil
 }

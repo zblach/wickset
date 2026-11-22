@@ -27,7 +27,7 @@ func TestRealAlgSmoke(t *testing.T) {
 	t.Parallel()
 	start := time.Now()
 	pt := []byte("hello")
-	lock, payload, key, err := Seal(t.Context(), pt, SealOpts{Alg: alg.Argon2id256M, N: 0})
+	lock, payload, key, err := Seal(t.Context(), pt, SealOpts{Alg: alg.Argon2idShort, N: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,18 +48,18 @@ func TestRealAlgSmoke(t *testing.T) {
 	if _, _, _, err := Seal(t.Context(), pt, SealOpts{Alg: 0x00}); !errors.Is(err, alg.ErrUnknown) {
 		t.Fatalf("alg 0x00: %v", err)
 	}
-	t.Logf("seal, extend, open on %v in %v", alg.Argon2id256M, time.Since(start).Round(time.Millisecond))
+	t.Logf("seal, extend, open on %v in %v", alg.Argon2idShort, time.Since(start).Round(time.Millisecond))
 }
 
 // TestOpenChecksFirst: Open refuses a damaged or mismatched payload before
 // any evaluation of H, so a mistake never costs the delay.
 func TestOpenChecksFirst(t *testing.T) {
 	t.Parallel()
-	lock, payload, _, err := Seal(t.Context(), []byte("x"), SealOpts{Alg: alg.Argon2id256M, N: 0})
+	lock, payload, _, err := Seal(t.Context(), []byte("x"), SealOpts{Alg: alg.Argon2idShort, N: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, _, _, err := Seal(t.Context(), []byte("x"), SealOpts{Alg: alg.Argon2id256M, N: 0})
+	other, _, _, err := Seal(t.Context(), []byte("x"), SealOpts{Alg: alg.Argon2idShort, N: 0})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -37,9 +37,12 @@ func (*sealCmd) Help() string {
 		"--key-out saves the lock's secret, so its holder can open the payload at once\n" +
 		"with bypass, however far the lock is later extended. It is the whole delay in\n" +
 		"one line: keep it apart from the lock and payload.\n\n" +
-		"Without --alg, --delay chooses: 0x01 below a day, 0x02 (a step about 40×\n" +
-		"as long, so a smaller lock) from a day up. -n counts steps of one\n" +
-		"algorithm, so it needs --alg.\n\n" + delayHelp
+		"Each family has a short step and a long one (a smaller lock for the same\n" +
+		"delay): 0x01/0x02 Argon2id, memory-hard; 0x03/0x04 SHA-256 chains, which\n" +
+		"seal far faster on a GPU. README.md compares them. Without --alg, --delay\n" +
+		"chooses the short step below a day and the long one from a day up: SHA-256\n" +
+		"with --gpu, Argon2id without. -n counts steps of one algorithm, so it\n" +
+		"needs --alg.\n\n" + delayHelp
 }
 
 // Validate requires one of -n and --delay, the xor tag forbidding both, and an

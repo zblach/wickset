@@ -4,7 +4,7 @@
   ✓ Checked notes.txt.lock in 7ms
 
   ╭────────────────────────────────────────────────────────────────────╮
-  │ Algorithm       0x02 (argon2id-m1G-t30-p1)                         │
+  │ Algorithm       0x02 (argon2id-m128M-t192-p1)                      │
   │ Steps           76001 to open (N = 76000)                          │
   │ Lock size       2.3 MiB                                            │
   │ Stored as       two files, damage check passed                     │

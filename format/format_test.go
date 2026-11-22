@@ -15,7 +15,7 @@ import (
 // bind to an object's ALG_ID and block 0, and carry it whole.
 func object(t *testing.T, seed byte, blocks int) (raw []byte, o *chain.Object) {
 	t.Helper()
-	raw = append([]byte{byte(alg.Argon2id256M)}, bytes.Repeat([]byte{seed}, blocks*32)...)
+	raw = append([]byte{byte(alg.Argon2idShort)}, bytes.Repeat([]byte{seed}, blocks*32)...)
 	o, err := chain.Parse(raw)
 	if err != nil {
 		t.Fatal(err)

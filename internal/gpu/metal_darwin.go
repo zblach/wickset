@@ -1,6 +1,6 @@
 //go:build darwin && cgo
 
-package argon2gpu
+package gpu
 
 /*
 #cgo CFLAGS: -fno-objc-arc
@@ -12,12 +12,14 @@ import "C"
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 
 	"chainlock/internal/argon2"
@@ -42,6 +44,9 @@ func Name() string {
 type Device struct {
 	mu sync.Mutex // one batch at a time: each holds most of the GPU's memory
 	c  *C.clm
+
+	chainOnce  sync.Once
+	chainBatch int
 }
 
 // Open compiles the kernel for the default Metal device. It takes seconds:
@@ -63,7 +68,7 @@ func Open() (*Device, error) {
 	var cerr *C.char
 	c := C.clm_open(csrc, cdefs, &cerr)
 	if c == nil {
-		return nil, cError("argon2gpu: Metal", cerr)
+		return nil, cError("gpu: Metal", cerr)
 	}
 	return &Device{c: c}, nil
 }
@@ -101,7 +106,7 @@ func (d *Device) Hash(ctx context.Context, p argon2.Params, inputs [][]byte) ([]
 	}
 	for _, in := range inputs {
 		if len(in) != n {
-			return nil, errors.New("argon2gpu: inputs of different lengths")
+			return nil, errors.New("gpu: inputs of different lengths")
 		}
 	}
 	d.mu.Lock()
@@ -129,7 +134,7 @@ func (d *Device) batch(ctx context.Context, p argon2.Params, inputs [][]byte) ([
 	j := C.clm_begin(d.c, unsafe.Pointer(&job[0]), C.size_t(len(job)), unsafe.Pointer(&flat[0]), C.size_t(len(flat)),
 		C.uint32_t(len(inputs)), C.uint64_t(instanceBytes(p)), C.size_t(outLen), &cerr)
 	if j == nil {
-		return nil, cError("argon2gpu: starting a batch", cerr)
+		return nil, cError("gpu: starting a batch", cerr)
 	}
 	defer C.clm_free(j)
 	for pass := range p.Passes {
@@ -138,19 +143,92 @@ func (d *Device) batch(ctx context.Context, p argon2.Params, inputs [][]byte) ([
 				return nil, err
 			}
 			if C.clm_segment(d.c, j, C.uint32_t(pass), C.uint32_t(slice), &cerr) != 0 {
-				return nil, cError(fmt.Sprintf("argon2gpu: pass %d slice %d", pass, slice), cerr)
+				return nil, cError(fmt.Sprintf("gpu: pass %d slice %d", pass, slice), cerr)
 			}
 		}
 	}
 	buf := make([]byte, outLen)
 	if C.clm_end(d.c, j, unsafe.Pointer(&buf[0]), &cerr) != 0 {
-		return nil, cError("argon2gpu: final", cerr)
+		return nil, cError("gpu: final", cerr)
 	}
 	out := make([][]byte, len(inputs))
 	for i := range out {
 		out[i] = buf[i*int(p.KeyLen) : (i+1)*int(p.KeyLen) : (i+1)*int(p.KeyLen)]
 	}
 	return out, nil
+}
+
+// Chain hashes each of hs n times over with SHA-256, as alg.SHA256Chain.Run
+// does, one thread a chain. It runs in dispatches of chainDispatch hashes;
+// after each it reports the hashes done per chain, if report is set, and
+// stops with ctx's error once ctx is done.
+func (d *Device) Chain(ctx context.Context, hs [][32]byte, n uint64, report func(done uint64)) ([][32]byte, error) {
+	if len(hs) == 0 {
+		return nil, nil
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	words := make([]byte, 0, 32*len(hs)) // big-endian words, as the kernel holds them, in host order
+	for _, h := range hs {
+		for i := 0; i < 32; i += 4 {
+			words = binary.NativeEndian.AppendUint32(words, binary.BigEndian.Uint32(h[i:]))
+		}
+	}
+	s := C.clm_sha_begin(d.c, unsafe.Pointer(&words[0]), C.size_t(len(words)))
+	if s == nil {
+		return nil, errors.New("gpu: could not allocate the chains")
+	}
+	defer C.clm_sha_end(s)
+	for done := uint64(0); done < n; {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		m := min(n-done, chainDispatch)
+		var cerr *C.char
+		if C.clm_sha_iter(d.c, s, C.uint32_t(len(hs)), C.uint32_t(m), &cerr) != 0 {
+			return nil, cError("gpu: SHA-256 chains", cerr)
+		}
+		done += m
+		if report != nil {
+			report(done)
+		}
+	}
+	C.clm_sha_read(s, unsafe.Pointer(&words[0]), C.size_t(len(words)))
+	out := make([][32]byte, len(hs))
+	for i := range out {
+		for w := range 8 {
+			binary.BigEndian.PutUint32(out[i][4*w:], binary.NativeEndian.Uint32(words[32*i+4*w:]))
+		}
+	}
+	return out, nil
+}
+
+// ChainBatch is how many chains Chain runs at once to best effect here: one
+// thread is far slower than a CPU core, so a GPU needs many. It is found on
+// first use, in a second or two, by doubling the chains until throughput
+// stops growing.
+func (d *Device) ChainBatch() int {
+	d.chainOnce.Do(func() { d.chainBatch = d.calibrate() })
+	return d.chainBatch
+}
+
+func (d *Device) calibrate() int {
+	const hashes = 1 << 11 // per chain, per probe: one dispatch
+	best, at, flat := 0.0, minChains, 0
+	for n := minChains; n <= maxChains && flat < 2; n *= 2 {
+		start := time.Now()
+		if _, err := d.Chain(context.Background(), make([][32]byte, n), hashes, nil); err != nil {
+			break
+		}
+		rate := float64(n) / time.Since(start).Seconds()
+		if rate > best*1.05 {
+			at, flat = n, 0
+		} else {
+			flat++ // two probes in a row without 5% more: past the knee
+		}
+		best = max(best, rate)
+	}
+	return at
 }
 
 func cError(what string, s *C.char) error {

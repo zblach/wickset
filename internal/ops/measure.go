@@ -12,18 +12,22 @@ import (
 	"chainlock/chain"
 )
 
-// LongDelay is the delay from which a seal with no algorithm given uses 0x02
-// rather than 0x01. At a day, 0x01 already makes a lock of ~8 MB, and 0x02's
-// steps, about 40× as long, are still a negligible fraction of the delay;
-// below it, 0x01 keeps the rounding fine and needs a quarter of the memory
-// per worker.
+// LongDelay is the delay from which a seal with no algorithm given uses the
+// long step rather than the short (README.md, "Choosing parameters").
 const LongDelay = 24 * time.Hour
 
-// AlgFor is the algorithm a seal of the given delay uses when none is given.
-func AlgFor(delay time.Duration) alg.Alg {
-	id := alg.Argon2id256M
+// AlgFor is the algorithm a seal of the given delay uses when none is given:
+// on the GPU, a SHA-256 chain, which it seals far faster than it opens;
+// otherwise Argon2id, which keeps memory-hardness where the GPU's speed is
+// not on offer (README.md, "Choosing parameters").
+func AlgFor(delay time.Duration, gpu bool) alg.Alg {
+	short, long := alg.Argon2idShort, alg.Argon2idLong
+	if gpu {
+		short, long = alg.SHA256Short, alg.SHA256Long
+	}
+	id := short
 	if delay >= LongDelay {
-		id = alg.Argon2id1GT30
+		id = long
 	}
 	a, _ := alg.Lookup(id)
 	return a
@@ -31,6 +35,23 @@ func AlgFor(delay time.Duration) alg.Alg {
 
 // stepSamples is how many steps a timing takes; it reports the fastest.
 const stepSamples = 3
+
+// slice is the most of a SHA-256 chain a timing runs on one core, under a
+// second. A longer step is timed by its first slice hashes and scaled up,
+// as every hash of a chain costs the same.
+const slice = 1 << 24
+
+// cpuPart runs a's step on x on this goroutine, for a timing: whole, or for
+// a SHA-256 chain longer than slice, its first slice hashes. It returns the
+// share of a step it ran.
+func cpuPart(ctx context.Context, a alg.Alg, x []byte) (float64, error) {
+	if c, ok := alg.SHA256ChainOf(a); ok && c.K > slice {
+		_, err := c.Run(ctx, c.Start(x), slice-1, nil)
+		return float64(slice) / float64(c.K), err
+	}
+	_, err := alg.Eval(ctx, a, x)
+	return 1, err
+}
 
 // stepTime measures one step of a, alone, as a solve runs it: on b (the GPU)
 // if b is set, else on one core. It is the fastest of stepSamples, reported as
@@ -40,7 +61,7 @@ const stepSamples = 3
 // slower, and anything else on the machine only slows a step. A seal turns
 // this time into steps, and a slow estimate would make too few, opening the
 // lock early; the fastest errs, if at all, toward more.
-func (e *Env) stepTime(ctx context.Context, a alg.Alg, label string, b chain.Batcher) (time.Duration, error) {
+func (e *Env) stepTime(ctx context.Context, a alg.Alg, label string, b *batcher) (time.Duration, error) {
 	progress, activity := e.progress(label), e.activity(label, stepSamples)
 	if activity != nil {
 		defer activity(0, -1, 0)
@@ -53,16 +74,19 @@ func (e *Env) stepTime(ctx context.Context, a alg.Alg, label string, b chain.Bat
 		}
 		x[0] = byte(i)
 		t := time.Now()
+		var el time.Duration
+		var share float64
 		var err error
 		if b != nil {
-			_, err = b.Batch(ctx, a, [][]byte{x})
+			el, share, err = b.sample(ctx, a, [][]byte{x})
 		} else {
-			_, err = alg.Eval(ctx, a, x)
+			share, err = cpuPart(ctx, a, x)
+			el = time.Since(t)
 		}
 		if err != nil {
 			return 0, err
 		}
-		fastest = min(fastest, time.Since(t))
+		fastest = min(fastest, time.Duration(float64(el)/share))
 		if progress != nil {
 			progress(i+1, stepSamples)
 		}
@@ -72,21 +96,22 @@ func (e *Env) stepTime(ctx context.Context, a alg.Alg, label string, b chain.Bat
 
 // roundRate measures how fast a seal runs: n steps at once, as n workers or
 // one batch on b, timed together, in steps a second. Running side by side,
-// they share memory bandwidth, so this is slower than n single steps.
-func (e *Env) roundRate(ctx context.Context, a alg.Alg, label string, n int, b chain.Batcher) (float64, error) {
+// they share memory bandwidth, so this is slower than n single steps. A
+// long SHA-256 chain runs only part of each step, as stepTime's do.
+func (e *Env) roundRate(ctx context.Context, a alg.Alg, label string, n int, b *batcher) (float64, error) {
 	progress, activity := e.progress(label), e.activity(label, n)
 	xs := make([][]byte, n)
 	for i := range xs {
 		xs[i] = make([]byte, a.BlockSize())
-		xs[i][0], xs[i][1] = byte(i), byte(i>>8)
+		xs[i][0], xs[i][1], xs[i][2] = byte(i), byte(i>>8), byte(i>>16)
 	}
-	start := time.Now()
 	if b != nil {
 		if activity != nil {
 			activity(0, 0, n)
 			defer activity(0, -1, 0)
 		}
-		if _, err := b.Batch(ctx, a, xs); err != nil {
+		el, share, err := b.sample(ctx, a, xs)
+		if err != nil {
 			return 0, err
 		}
 		if progress != nil {
@@ -94,33 +119,35 @@ func (e *Env) roundRate(ctx context.Context, a alg.Alg, label string, n int, b c
 				progress(i+1, n)
 			}
 		}
-	} else {
-		var mu sync.Mutex
-		var wg sync.WaitGroup
-		done := 0
-		errs := make([]error, n)
-		for w := range n {
-			wg.Go(func() {
-				if activity != nil {
-					activity(w, w, 1)
-					defer activity(w, -1, 0)
-				}
-				if _, errs[w] = alg.Eval(ctx, a, xs[w]); errs[w] == nil && progress != nil {
-					mu.Lock()
-					done++
-					progress(done, n)
-					mu.Unlock()
-				}
-			})
-		}
-		wg.Wait()
-		for _, err := range errs {
-			if err != nil {
-				return 0, err
+		return float64(n) * share / el.Seconds(), nil
+	}
+	start := time.Now()
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	done := 0
+	errs := make([]error, n)
+	shares := make([]float64, n)
+	for w := range n {
+		wg.Go(func() {
+			if activity != nil {
+				activity(w, w, 1)
+				defer activity(w, -1, 0)
 			}
+			if shares[w], errs[w] = cpuPart(ctx, a, xs[w]); errs[w] == nil && progress != nil {
+				mu.Lock()
+				done++
+				progress(done, n)
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return 0, err
 		}
 	}
-	return float64(n) / time.Since(start).Seconds(), nil
+	return float64(n) * shares[0] / time.Since(start).Seconds(), nil
 }
 
 // plan sizes the parallel run named label: steps evaluations of a, or, with
@@ -128,7 +155,7 @@ func (e *Env) roundRate(ctx context.Context, a alg.Alg, label string, n int, b c
 // runs one step at a time, on one core or, slower, on a GPU: in GPU mode both
 // are timed, and the faster sets the steps, so the delay holds against
 // either. gpu is how many steps the GPU (b) holds at a time; 0 for none.
-func (e *Env) plan(ctx context.Context, label string, a alg.Alg, steps int, delay time.Duration, workers int, b chain.Batcher, gpu int) (int, error) {
+func (e *Env) plan(ctx context.Context, label string, a alg.Alg, steps int, delay time.Duration, workers int, b *batcher, gpu int) (int, error) {
 	if delay > 0 {
 		st, err := e.stepTime(ctx, a, "measuring", nil)
 		if err != nil {

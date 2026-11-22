@@ -1,4 +1,4 @@
-package argon2gpu
+package gpu
 
 import (
 	"crypto/sha256"
@@ -34,13 +34,13 @@ func TestVendored(t *testing.T) {
 		}
 		n++
 	}
-	if n != 11 {
-		t.Errorf("%d files in SHA256SUMS, want 11", n)
+	if n != 13 {
+		t.Errorf("%d files in SHA256SUMS, want 13", n)
 	}
 }
 
 // TestSource: the kernel expands to one unit with no include left but
-// Metal's own, each file once, and hashcat's Argon2 in it.
+// Metal's own, each file once, and hashcat's Argon2 and SHA-256 in it.
 func TestSource(t *testing.T) {
 	src, err := source()
 	if err != nil {
@@ -51,7 +51,7 @@ func TestSource(t *testing.T) {
 			t.Errorf("unexpanded: %s", line)
 		}
 	}
-	for _, s := range []string{"argon2_fill_segment", "chainlock_argon2_fill", "#include <metal_stdlib>"} {
+	for _, s := range []string{"argon2_fill_segment", "chainlock_argon2_fill", "sha256_transform", "chainlock_sha256_iter", "#include <metal_stdlib>"} {
 		if !strings.Contains(src, s) {
 			t.Errorf("source lacks %q", s)
 		}

@@ -4,8 +4,10 @@
   Bench  Time this machine to see how long locks take
 
   ┃ Algorithm
-  ┃ > 0x01  argon2id-m256M-t3-p1   256 MiB a step
-  ┃   0x02  argon2id-m1G-t30-p1    1 GiB a step
+  ┃ > 0x01  argon2id-m128M-t5-p1   128 MiB a step
+  ┃   0x02  argon2id-m128M-t192-p1 128 MiB a step
+  ┃   0x03  sha256-chain-k23       no memory
+  ┃   0x04  sha256-chain-k28       no memory
 
   ↑ up · ↓ down · enter submit · esc menu
 

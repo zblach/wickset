@@ -1,7 +1,7 @@
 package argon2
 
 // This file is chainlock's, not x/crypto's: the API every Argon2id backend
-// implements, the CPU (this package) and the GPU (internal/argon2gpu).
+// implements, the CPU (this package) and the GPU (internal/gpu).
 
 import "context"
 

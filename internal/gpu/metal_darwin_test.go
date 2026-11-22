@@ -1,6 +1,6 @@
 //go:build darwin && cgo
 
-package argon2gpu
+package gpu
 
 import (
 	"bytes"
@@ -94,15 +94,14 @@ func TestMatchesXCrypto(t *testing.T) {
 }
 
 // TestChainlockAlgs: the GPU computes chainlock's own steps, H of each
-// registered Argon2id entry, exactly. 0x02 (1 GiB, 30 passes) runs without
-// -short.
+// registered Argon2id entry, exactly. 0x02 (192 passes) runs without -short.
 func TestChainlockAlgs(t *testing.T) {
 	d := device(t)
-	for _, id := range []alg.ID{alg.Argon2id256M, alg.Argon2id1GT30} {
+	for _, id := range []alg.ID{alg.Argon2idShort, alg.Argon2idLong} {
 		a, _ := alg.Lookup(id)
 		t.Run(a.Name(), func(t *testing.T) {
-			if testing.Short() && id == alg.Argon2id1GT30 {
-				t.Skip("1 GiB, 30 passes: skipped with -short")
+			if testing.Short() && id == alg.Argon2idLong {
+				t.Skip("192 passes: skipped with -short")
 			}
 			p, ok := alg.Argon2idParams(a)
 			if !ok {
@@ -124,6 +123,38 @@ func TestChainlockAlgs(t *testing.T) {
 	}
 }
 
+// TestChain: the GPU's SHA-256 chains are the CPU's (alg.SHA256Chain.Run),
+// across dispatches and either side of a SIMD group, reporting after each
+// dispatch.
+func TestChain(t *testing.T) {
+	d := device(t)
+	c := alg.SHA256Chain{Domain: []byte("chainlock/v1::test"), K: 2*chainDispatch + 7}
+	for _, n := range []int{1, 31, 33} {
+		hs := make([][32]byte, n)
+		for i, x := range random(n, 32) {
+			hs[i] = c.Start(x)
+		}
+		var reports []uint64
+		got, err := d.Chain(t.Context(), hs, c.K-1, func(done uint64) { reports = append(reports, done) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, h := range hs {
+			if want, _ := c.Run(t.Context(), h, c.K-1, nil); got[i] != want {
+				t.Fatalf("chain %d of %d: GPU %x, CPU %x", i, n, got[i], want)
+			}
+		}
+		if fmt.Sprint(reports) != fmt.Sprint([]uint64{chainDispatch, 2 * chainDispatch, c.K - 1}) {
+			t.Fatalf("reports %v", reports)
+		}
+	}
+	if b := d.ChainBatch(); b < minChains || b > maxChains {
+		t.Fatalf("ChainBatch %d", b)
+	} else {
+		t.Logf("%d chains at a time", b)
+	}
+}
+
 // TestCancel: a cancelled batch stops at the next segment.
 func TestCancel(t *testing.T) {
 	d := device(t)
@@ -138,10 +169,10 @@ func TestCancel(t *testing.T) {
 // BenchmarkSteps reports GPU throughput on chainlock's algorithms, in steps
 // a second, for batches of the given sizes (and Batch). Run on its own:
 //
-//	go test -run '^$' -bench Steps -benchtime 1x ./internal/argon2gpu
+//	go test -run '^$' -bench Steps -benchtime 1x ./internal/gpu
 func BenchmarkSteps(b *testing.B) {
 	d := device(b)
-	for _, id := range []alg.ID{alg.Argon2id256M, alg.Argon2id1GT30} {
+	for _, id := range []alg.ID{alg.Argon2idShort, alg.Argon2idLong} {
 		a, _ := alg.Lookup(id)
 		p, _ := alg.Argon2idParams(a)
 		for _, n := range []int{1, 8, d.Batch(p)} {

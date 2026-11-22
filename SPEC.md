@@ -1,7 +1,7 @@
 # chainlock — wire format, draft 2
 
 A sequential-delay lock. A secret `S` is masked behind `N+1` inherently
-sequential evaluations of a memory-hard function `H`. Anyone can lengthen the
+sequential evaluations of a step function `H`. Anyone can lengthen the
 delay without learning `S`. This document specifies the object only: no
 library API, CLI, container, UI or payload encryption is part of the format.
 
@@ -45,7 +45,9 @@ defines its own parameters, including any salt or domain string it uses.
 | `0x00`      | —  | —          | **invalid** |
 | `0x01`      | 32 | §3.1       | defined |
 | `0x02`      | 32 | §3.2       | defined |
-| `0x03–0xEF` | —  | —          | unassigned |
+| `0x03`      | 32 | §3.3       | defined |
+| `0x04`      | 32 | §3.4       | defined |
+| `0x05–0xEF` | —  | —          | unassigned |
 | `0xF0–0xFF` | —  | —          | private use, never assigned |
 
 Any `ALG_ID` not marked "defined" is rejected before any other work (this
@@ -57,16 +59,16 @@ and no conformance vector uses them. A new parameter set or primitive is a new
 Every value in an entry belongs to that entry; nothing is a global constant.
 Each entry that takes a salt or domain string includes its own `ALG_ID` in it.
 
-The two defined entries differ in step length, not in kind: `0x02` has 4× the
-memory of `0x01` and 10× the passes, so a step about 40× as long. An object's
-delay is its step count times its step time, so a longer step makes a given
-delay a smaller object (`B` bytes per step).
+The entries come in pairs of one primitive, a short step and a long one.
+An object's delay is its step count times its step time, so a longer step
+makes a given delay a smaller object (`B` bytes per step). How the parameters
+were chosen is not part of this specification.
 
 ### 3.1 `0x01`
 
 ```
 H(x) = Argon2id(password = x, salt = "chainlock/v1::01", secret = ε, ad = ε,
-                m = 262144 KiB, t = 3, p = 1, outLen = 32)
+                m = 131072 KiB, t = 5, p = 1, outLen = 32)
 ```
 
 Argon2id v1.3 per RFC 9106, version 0x13. The salt is the ASCII string above,
@@ -78,7 +80,24 @@ cannot be spread across cores.
 
 ### 3.2 `0x02`
 
-As §3.1, except `salt = "chainlock/v1::02"`, `m = 1048576 KiB` and `t = 30`.
+As §3.1, except `salt = "chainlock/v1::02"` and `t = 192`.
+
+### 3.3 `0x03`
+
+```
+h[1] = SHA-256("chainlock/v1::03" ‖ x)
+h[i] = SHA-256(h[i-1])            for i = 2..K
+H(x) = h[K]                       K = 2^23
+```
+
+SHA-256 per FIPS 180-4. The domain string is the ASCII string above, 16
+bytes, constant as §3.1's salt is; each later hash is of the 32-byte digest
+before it. `H` is `K` hashes in sequence and nothing else: no memory beyond
+one digest.
+
+### 3.4 `0x04`
+
+As §3.3, except the domain string is `"chainlock/v1::04"` and `K = 2^28`.
 
 ## 4. Step function
 
@@ -146,11 +165,14 @@ whose plaintext is another object.
 ## 10. Security considerations
 
 * **Hardware-relative.** Delay is wall-clock on the solver's hardware, and the clock starts when
-  solving starts, not when the object was created. A large
-  `m` makes each step wait on DRAM latency rather than ALU speed, which narrows
-  but does not remove the advantage of dedicated hardware; `0x01` starts at
-  256 MiB because smaller working sets can fit in large last-level caches.
-  Calibrate for the fastest plausible adversary.
+  solving starts, not when the object was created. Calibrate for the fastest
+  plausible adversary.
+* **Memory-hardness.** The Argon2id entries (`0x01`, `0x02`) make each step
+  wait on memory rather than arithmetic, which narrows but does not remove the
+  advantage of dedicated hardware; a working set that fits a solver's cache
+  narrows it less. The SHA-256 entries (`0x03`, `0x04`) are not memory-hard: a
+  solver with faster sequential SHA-256 than the calibrating machine's opens
+  their objects sooner in proportion.
 * **Randomness.** Every `I[j]` must be uniform and independent. An algorithm's
   salt is constant across objects, so identical `I` values in two objects of the
   same algorithm would share work; random `I` makes that negligible.

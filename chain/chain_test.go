@@ -158,7 +158,7 @@ func TestNew(t *testing.T) {
 // steps, not after them: within half a step (a sync point is a twelfth of
 // one). It measures its own step, so load cannot fake either.
 func TestCancelMidStep(t *testing.T) {
-	a, _ := alg.Lookup(alg.Argon2id256M)
+	a, _ := alg.Lookup(alg.Argon2idShort)
 	t0 := time.Now()
 	a.H(make([]byte, a.BlockSize()))
 	step := time.Since(t0)
@@ -167,7 +167,7 @@ func TestCancelMidStep(t *testing.T) {
 	started := make(chan struct{}, 2)
 	done := make(chan error)
 	go func() {
-		_, _, err := New(ctx, alg.Argon2id256M, 3, Opts{Workers: 2,
+		_, _, err := New(ctx, alg.Argon2idShort, 3, Opts{Workers: 2,
 			Activity: func(_, first, _ int) {
 				if first >= 0 {
 					started <- struct{}{}
@@ -369,7 +369,7 @@ func TestParseRejects(t *testing.T) {
 	}{
 		{"empty", nil, ErrFormat},
 		{"id 0x00", good(0x00, 3), alg.ErrUnknown},
-		{"unassigned 0x03", good(0x03, 3), alg.ErrUnknown},
+		{"unassigned 0x05", good(0x05, 3), alg.ErrUnknown},
 		{"unassigned 0xEF", good(0xEF, 3), alg.ErrUnknown},
 		{"private use 0xF0", good(0xF0, 3), alg.ErrUnknown},
 		{"private use 0xFF", good(0xFF, 3), wantFF},
@@ -459,7 +459,13 @@ type vector struct {
 var vectorSpecs = []struct {
 	id alg.ID
 	n  int
-}{{alg.Argon2id256M, 0}, {alg.Argon2id256M, 2}, {alg.Argon2id1GT30, 0}}
+}{
+	{alg.Argon2idShort, 0}, {alg.Argon2idShort, 2}, {alg.Argon2idLong, 0},
+	{alg.SHA256Short, 0}, {alg.SHA256Short, 2}, {alg.SHA256Long, 0},
+}
+
+// long reports whether id's step takes seconds, for tests to skip with -short.
+func long(id alg.ID) bool { return id == alg.Argon2idLong || id == alg.SHA256Long }
 
 // alg.ID has a String method, so format it as byte(id) wherever %x means the
 // raw id.
@@ -504,8 +510,8 @@ func TestVectors(t *testing.T) {
 	realParallel(t)
 	for _, vs := range vectorSpecs {
 		t.Run(fmt.Sprintf("alg%02x-n%d", byte(vs.id), vs.n), func(t *testing.T) {
-			if testing.Short() && vs.id == alg.Argon2id1GT30 {
-				t.Skip("long algorithm (1 GiB, ~16 s a step) skipped with -short")
+			if testing.Short() && long(vs.id) {
+				t.Skip("long step (~10 s) skipped with -short")
 			}
 			realParallel(t)
 			start := time.Now()
