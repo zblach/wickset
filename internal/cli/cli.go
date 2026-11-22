@@ -27,7 +27,8 @@ type cli struct {
 	Bench  benchCmd  `cmd:"" help:"Time this machine to see how long wicks take."`
 	TUI    tuiCmd    `cmd:"" name:"tui" help:"Do any of the above interactively."`
 
-	GPU bool `name:"gpu" help:"Seal and extend on the GPU (macOS: Metal) instead of CPU workers; one step of each batch is checked on the CPU."`
+	CPU       bool       `name:"cpu" help:"Seal and extend on CPU workers. Without it they run on the GPU where there is one (macOS: Metal), one step of each batch checked on the CPU."`
+	GPUMemory budgetFlag `name:"gpu-memory" placeholder:"SIZE" help:"GPU memory Argon2id batches may hold: a size such as 8G, or a share such as 25% (default 50% of what the GPU may use)."`
 }
 
 // exitUsage is the conventional status for a bad invocation; kong's own is 80.
@@ -59,12 +60,10 @@ func Main() {
 			os.Exit(code)
 		}),
 	)
-	// The GPU is the program's, for whatever it does: refused at once where
-	// there is none, not when a seal reaches it.
-	if c.GPU && ops.GPUName() == "" {
-		k.Fatalf("--gpu: no GPU in this build or on this machine")
-	}
-	env.GPU = c.GPU
+	// The GPU is the program's, for whatever it does: used wherever there is
+	// one, unless asked for the CPU.
+	env.GPU = !c.CPU && ops.GPUName() != ""
+	env.GPUMemory = ops.Budget(c.GPUMemory)
 	err := k.Run()
 	term.close() // a cancelled run leaves its line open
 	k.FatalIfErrorf(err)

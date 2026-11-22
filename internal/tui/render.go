@@ -90,7 +90,7 @@ func renderRun(width int, f runFrame) string {
 		}
 		if s.Stage == "measuring" {
 			lines = append(lines, warnStyle.Render("Not sealing yet: timing the step on one core, as the solver runs it, to turn the\n"+
-				"delay into a step count. Sealing then starts on every worker."))
+				"delay into a step count. Sealing then starts, on the GPU or every core."))
 		}
 		// Every width is set by the total, not the count so far, so nothing
 		// shifts or shrinks as the count gains digits.

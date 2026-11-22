@@ -52,7 +52,16 @@ func (d *delayFlag) UnmarshalText(text []byte) error {
 	return err
 }
 
+// budgetFlag is a GPU memory budget as ops.ParseBudget reads it: 8G, 25%.
+type budgetFlag ops.Budget
+
+func (b *budgetFlag) UnmarshalText(text []byte) error {
+	v, err := ops.ParseBudget(string(text))
+	*b = budgetFlag(v)
+	return err
+}
+
 // workersFlag is the --workers flag shared by seal and extend.
 type workersFlag struct {
-	Workers int `short:"w" help:"Parallel evaluations (0 = all cores); memory is workers × the algorithm's. With --gpu, only if the GPU fails."`
+	Workers int `short:"w" help:"Parallel evaluations on the CPU (0 = all cores); memory is workers × the algorithm's. On the GPU, used only if it fails."`
 }

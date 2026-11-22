@@ -46,7 +46,7 @@ func newForm(act action, in *inputs, page int) *huh.Form {
 			"Keep it somewhere other than the wick.")
 	algorithm := huh.NewSelect[alg.ID]().Title("Algorithm").Options(algOptions()...).Value(&in.Alg)
 	workers := huh.NewInput().Title("Workers").Value(&in.Workers).Validate(workersValidator).Placeholder("0").CharLimit(4).
-		Description(fmt.Sprintf("Steps computed at once. 0 or -1: one per core (%d here).", cores))
+		Description(fmt.Sprintf("Steps on the CPU at once; on a GPU, used if it fails. 0 or -1: one per core (%d).", cores))
 	wickFile := "A .wick file (with its .payload next to it), or a .wick.tar."
 
 	var fields []huh.Field
@@ -179,8 +179,9 @@ func helpText(act action, page int) string {
   machine that might try.
   Or a number N, for exactly N+1 steps of the algorithm chosen next.
 
-Sealing does as much work as the wait itself, shared across your cores:
-a 12h wick takes 3h or more to make on 4 cores.`
+Sealing does as much work as the wait itself, shared across your cores
+or a GPU: a 12h wick takes 3h or more to make on 4 cores, and minutes
+on a GPU with SHA-256.`
 	case act == actSeal:
 		return fmt.Sprintf(`Algorithm
   0x01  Argon2id, 128 MiB, short step   memory-hard
@@ -198,7 +199,8 @@ Save as
   one archive   the same two files, in one tar
   raw files     the bare wick (SPEC.md), with no damage check
 
-Workers   steps computed at once; each needs the algorithm's memory.
+Workers   steps computed at once on the CPU, each holding the
+          algorithm's memory; with a GPU, only if the GPU fails.
 Key file  opens the file at once with no wait, even after the wick is
           made longer. Keep it apart from the wick.`, ops.FormatDelay(ops.LongDelay))
 	}

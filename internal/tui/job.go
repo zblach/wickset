@@ -44,10 +44,10 @@ type doneMsg struct {
 // has no Stdin or Stdout and a key path of "-" is refused.
 type op func(ctx context.Context, env *ops.Env) (any, error)
 
-func newJob(parent context.Context, title string, f op, gpu bool) *job {
+func newJob(parent context.Context, title string, f op, gpu bool, gpuMemory ops.Budget) *job {
 	ctx, cancel := context.WithCancel(parent)
 	j := &job{title: title, start: time.Now(), cancel: cancel}
-	env := &ops.Env{Note: j.note, Events: j.event, GPU: gpu}
+	env := &ops.Env{Note: j.note, Events: j.event, GPU: gpu, GPUMemory: gpuMemory}
 	j.run = func() tea.Msg {
 		defer cancel()
 		v, err := f(ctx, env)

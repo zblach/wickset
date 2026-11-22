@@ -191,22 +191,20 @@ func workerCount(workers, evals int) int {
 	return min(workers, evals)
 }
 
-// warnMemory notes the peak memory of a parallel run when it reaches 1 GiB:
-// a working set per worker, or with gpu steps on the GPU, theirs and the one
-// the CPU checks a batch with.
+// warnMemory notes the peak memory of a run on the CPU workers when it
+// reaches 1 GiB: a working set per worker. A run on the GPU (gpu > 0) has
+// said its budget already, before any work began (gpuBatcher).
 func (e *Env) warnMemory(a alg.Alg, workers, evals, gpu int) {
-	held := workerCount(workers, evals)
-	on := fmt.Sprintf("%d parallel workers", held)
 	if gpu > 0 {
-		held = gpu + 1
-		on = fmt.Sprintf("%d steps on the GPU, and the one checking them", gpu)
+		return
 	}
+	held := workerCount(workers, evals)
 	total := int64(held) * int64(a.MemBytes())
 	if total < 1<<30 {
 		return
 	}
-	e.note(Warning, "%s uses %s per evaluation; %s need %s (set fewer workers to lower)",
-		a.Name(), Bytes(int64(a.MemBytes())), on, Bytes(total))
+	e.note(Warning, "%s uses %s per evaluation; %d parallel workers need %s (set fewer workers to lower)",
+		a.Name(), Bytes(int64(a.MemBytes())), held, Bytes(total))
 }
 
 // Bench is what a's steps take on this machine, measured: one alone on one

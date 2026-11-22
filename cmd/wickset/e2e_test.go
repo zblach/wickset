@@ -196,9 +196,9 @@ func TestSealByDelay(t *testing.T) {
 	mustRun(t, "open", plain+".wick")
 	wantFile(t, plain, pt)
 
-	// Without --alg, a delay chooses: under a day, 0x01 (real, so
-	// this costs four ~0.3 s steps: three to measure, one to seal).
-	r := mustRun(t, "seal", "-d", "1ms", "--archive", plain)
+	// Without --alg, a delay chooses: under a day on the CPU, 0x01 (real,
+	// so this costs four ~0.3 s steps: three to measure, one to seal).
+	r := mustRun(t, "--cpu", "seal", "-d", "1ms", "--archive", plain)
 	if !strings.Contains(r.stderr, "algorithm 0x01") || !strings.Contains(r.stderr, "measuring") {
 		t.Fatalf("auto choice or measuring not reported:\n%s", r.stderr)
 	}
@@ -436,6 +436,7 @@ func TestUsage(t *testing.T) {
 	wantFail(t, 2, "Usage: wickset seal", "seal")
 	wantFail(t, 2, "no such file", "info", filepath.Join(dir, "missing.wick"))
 	wantFail(t, 2, "unexpected argument frob", "frob")
+	wantFail(t, 2, "--gpu-memory", "--gpu-memory", "lots", "seal", "--alg", "0xFE", "-n", "1", plain)
 
 	// Without a .wick suffix there is no default output name.
 	os.Rename(wick, filepath.Join(dir, "renamed"))

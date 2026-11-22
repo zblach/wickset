@@ -20,6 +20,7 @@ type fakeAlg struct{ alg.Alg }
 func (fakeAlg) BlockSize() int    { return 32 }
 func (fakeAlg) H(x []byte) []byte { return x }
 func (fakeAlg) ID() alg.ID        { return 0xF0 }
+func (fakeAlg) Name() string      { return "fake" }
 func (fakeAlg) MemBytes() int     { return 0 }
 
 // record is an Env that keeps every event, and the events as lines.

@@ -240,7 +240,7 @@ func secs(s float64) time.Duration { return time.Duration(s * float64(time.Secon
 
 // scripted is a job told only events, as its operation would tell it.
 func scripted(events ...ops.Event) *job {
-	j := newJob(context.Background(), "x", nil, false)
+	j := newJob(context.Background(), "x", nil, false, ops.Budget{})
 	for _, e := range events {
 		j.event(e)
 	}

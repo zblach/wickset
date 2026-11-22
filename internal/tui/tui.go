@@ -23,10 +23,11 @@ import (
 
 // Run shows the TUI until the user quits. file, if given, preselects the
 // action that suits it, and starts the file field of whichever is chosen.
-// gpu has seal and extend run on the GPU, as the title says throughout.
-func Run(ctx context.Context, file string, gpu bool) error {
+// gpu has seal and extend run on the GPU, as the title says throughout,
+// holding at most gpuMemory of its memory.
+func Run(ctx context.Context, file string, gpu bool, gpuMemory ops.Budget) error {
 	m := newModel(ctx, file)
-	m.gpu = gpu
+	m.gpu, m.gpuMemory = gpu, gpuMemory
 	_, err := tea.NewProgram(m, tea.WithContext(ctx)).Run()
 	return err
 }
@@ -64,7 +65,9 @@ type model struct {
 	confirm bool // asking whether to cancel the job
 	gpu     bool // seal and extend run on the GPU, set when the TUI starts
 	spin    spinner.Model
-	res     *result
+	// gpuMemory is the GPU memory budget given when the TUI starts.
+	gpuMemory ops.Budget
+	res       *result
 
 	keyHelp help.Model // draws the help line from the screen's bindings
 }
@@ -285,7 +288,7 @@ func (m *model) openForm() tea.Cmd {
 
 // start runs f as the job titled title.
 func (m *model) start(title string, f op) tea.Cmd {
-	m.job = newJob(m.ctx, title, f, m.gpu)
+	m.job = newJob(m.ctx, title, f, m.gpu, m.gpuMemory)
 	m.screen, m.form, m.confirm = runScreen, nil, false
 	return tea.Batch(m.job.run, m.spin.Tick)
 }

@@ -48,7 +48,7 @@ and turns the delay into steps. `-n N` with `--alg` gives an exact count
 | `0x04` | SHA-256, 2²⁸ times over | long, ~11 s | no |
 
 Without `--alg`, a delay under a day uses the short step, longer the long
-one: SHA-256 with `--gpu`, which seals it far faster, and Argon2id without,
+one: SHA-256 on the GPU, which seals it far faster, and Argon2id on the CPU,
 keeping memory-hardness where that speed isn't on offer. `wickset bench`
 times this machine.
 
@@ -57,8 +57,11 @@ Each Argon2id worker holds a step's memory, so `--workers` bounds memory too.
 Never seal on someone else's machine: whoever computes the steps learns the
 key (see below).
 
-**`wickset --gpu …`** seals and extends on the GPU (macOS, Metal), in
-batches sized to the GPU at hand. Opening stays on the CPU, which runs a
+**Seal and extend run on the GPU** where there is one (macOS, Metal), in
+batches sized to the GPU at hand; `--cpu` runs them on the CPU workers
+instead, as happens anyway with no GPU. Argon2id batches may hold half the
+memory the GPU may use, said before any work starts; `--gpu-memory 8G` or
+`--gpu-memory 25%` changes that. Opening stays on the CPU, which runs a
 single step faster than a GPU; a delay is set by the faster of the two, so it
 holds against either. The CPU checks one step of every batch, and a mismatch
 stops the seal.
@@ -75,7 +78,7 @@ the ratio; the family and the hardware set that. `wickset bench` reports the
 ratio for this machine as its speed-up.
 
 Measured on an Apple M5 (4 performance and 6 efficiency cores, 10 GPU cores,
-32 GB, on mains power), with `wickset bench` and `--gpu bench`:
+32 GB, on mains power), with `wickset --cpu bench` and `wickset bench`:
 
 | | step | all cores | ratio | GPU | ratio | 8 h / 2 w seal, GPU |
 |---|---|---|---|---|---|---|
@@ -115,7 +118,7 @@ Seal on hardware you control.
 
     wickset seal -d 2w --archive notes.txt    # → notes.txt.wick.tar
     wickset seal -d 8h --raw notes.txt        # bare SPEC.md wick
-    wickset --gpu seal -d 2w notes.txt        # on the GPU
+    wickset --cpu seal -d 2w notes.txt        # on the CPU, even with a GPU
     wickset extend -d 1w notes.txt.wick       # in place; no secret needed
     wickset seal -d 8h --key-out ~/n.key notes.txt
     wickset bypass --key ~/n.key notes.txt.payload   # opens at once
@@ -126,7 +129,8 @@ Seal on hardware you control.
 ## TUI
 
 `wickset tui [FILE]` offers every command as a form. Tab completes paths,
-`?` explains fields. The title shows whether the GPU is on (`--gpu` at start).
+`?` explains fields. The title shows whether the GPU is in use (`--cpu` at
+start turns it off).
 A run's bar shows steps finished, in progress and pending.
 
 ## Files and keys

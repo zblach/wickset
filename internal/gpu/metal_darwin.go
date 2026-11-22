@@ -81,12 +81,11 @@ func (d *Device) Close() {
 	d.c = nil
 }
 
-// Batch is how many evaluations of p one batch holds: as many as fit one
-// buffer, and half the working set the device recommends, which on Apple
-// silicon is shared with everything else the machine runs.
+// Batch is the most evaluations of p one batch can hold: as many as fit one
+// buffer. How much of the device's memory to use is the caller's to decide
+// (Memory).
 func (d *Device) Batch(p argon2.Params) int {
-	limit := min(uint64(C.clm_max_buffer(d.c)), uint64(C.clm_working_set(d.c))/2)
-	return max(int(limit/instanceBytes(p)), 1)
+	return max(int(uint64(C.clm_max_buffer(d.c))/instanceBytes(p)), 1)
 }
 
 // Memory is the working set the device recommends: on Apple silicon, most of

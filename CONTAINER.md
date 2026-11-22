@@ -110,9 +110,10 @@ its file is readable by others.
 ## 6. Partly burned wicks
 
 A wick partly burned is itself a wick (SPEC.md §6), stored as a wick file
-(§2) like any other. The CLI names one `FILE.wick.STEPS`, beside `FILE.wick`;
-`STEPS` is for people, saying how far along it is, and a reader never relies
-on it: what a file holds, and how much of it is left, come from its contents.
+(§2) like any other. Saved by resumable opening (planned; not in the CLI
+yet), one is named `FILE.wick.STEPS`, beside `FILE.wick`; `STEPS` is for
+people, saying how far along it is, and a reader never relies on it: what a
+file holds, and how much of it is left, come from its contents.
 It pairs with the same payload, since block 0 and so `WICK_ID` are unchanged,
 and it is recognized as a copy of a given wick by sharing its blocks up to
 its last.

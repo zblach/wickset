@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
@@ -120,6 +121,55 @@ func Span(d time.Duration) string {
 	}
 	h := int(d.Round(time.Hour).Hours())
 	return fmt.Sprintf("%dd %dh", h/24, h%24)
+}
+
+// A Budget is how much of the GPU's memory a run may hold: a size, or a
+// share of what the GPU may use. The zero Budget is DefaultShare.
+type Budget struct {
+	Bytes uint64  // if set, the budget
+	Share float64 // else this share of the GPU's memory, 0 to 1
+}
+
+// DefaultShare is the GPU memory a run holds unless told otherwise: half,
+// as on an M5 with 32 GB all of it pushed gigabytes to swap.
+const DefaultShare = 0.5
+
+// Of is b in bytes, against total, the memory the GPU may use.
+func (b Budget) Of(total uint64) uint64 {
+	if b.Bytes > 0 {
+		return b.Bytes
+	}
+	return uint64(float64(total) * cmp.Or(b.Share, DefaultShare))
+}
+
+func (b Budget) String() string {
+	if b.Bytes > 0 {
+		return Bytes(int64(b.Bytes))
+	}
+	return strconv.FormatFloat(100*cmp.Or(b.Share, DefaultShare), 'f', -1, 64) + "%"
+}
+
+var budgetTerm = regexp.MustCompile(`^\s*([0-9]+(?:\.[0-9]*)?|\.[0-9]+)\s*(%|[KMGT]i?B?|B)\s*$`)
+
+// ParseBudget reads a GPU memory budget: a size in binary units, such as 8G,
+// 6GiB or 512M, or a share of the GPU's memory, such as 25%.
+func ParseBudget(s string) (Budget, error) {
+	m := budgetTerm.FindStringSubmatch(s)
+	if m == nil {
+		return Budget{}, fmt.Errorf("%q is not a size, such as 8G or 512M, or a share, such as 25%%", s)
+	}
+	n, err := strconv.ParseFloat(m[1], 64)
+	if err != nil || n <= 0 {
+		return Budget{}, fmt.Errorf("%q: a budget must be more than nothing", s)
+	}
+	if m[2] == "%" {
+		if n > 100 {
+			return Budget{}, fmt.Errorf("%q: a share is at most 100%%", s)
+		}
+		return Budget{Share: n / 100}, nil
+	}
+	shift := map[byte]uint{'K': 10, 'M': 20, 'G': 30, 'T': 40}[m[2][0]] // B: 0
+	return Budget{Bytes: uint64(n * float64(uint64(1)<<shift))}, nil
 }
 
 // Bytes formats a byte count.
