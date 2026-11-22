@@ -104,17 +104,17 @@ func IDKey(password, salt []byte, time, memory uint32, threads uint8, keyLen uin
 }
 
 // IDKeyContext is IDKey, except that it stops at the next sync point (a
-// quarter pass) once ctx is done, and returns ctx's error. [chainlock]
+// quarter pass) once ctx is done, and returns ctx's error. [wickset]
 func IDKeyContext(ctx context.Context, password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) ([]byte, error) {
 	return deriveKeyContext(ctx, argon2id, password, salt, nil, nil, time, memory, threads, keyLen)
 }
 
 func deriveKey(mode int, password, salt, secret, data []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
-	key, _ := deriveKeyContext(context.Background(), mode, password, salt, secret, data, time, memory, threads, keyLen) // [chainlock]
+	key, _ := deriveKeyContext(context.Background(), mode, password, salt, secret, data, time, memory, threads, keyLen) // [wickset]
 	return key
 }
 
-func deriveKeyContext(ctx context.Context, mode int, password, salt, secret, data []byte, time, memory uint32, threads uint8, keyLen uint32) ([]byte, error) { // [chainlock]
+func deriveKeyContext(ctx context.Context, mode int, password, salt, secret, data []byte, time, memory uint32, threads uint8, keyLen uint32) ([]byte, error) { // [wickset]
 	if time < 1 {
 		panic("argon2: number of rounds too small")
 	}
@@ -245,7 +245,7 @@ func processBlocks(ctx context.Context, B []block, time, memory, threads uint32,
 
 	for n := uint32(0); n < time; n++ {
 		for slice := uint32(0); slice < syncPoints; slice++ {
-			if err := ctx.Err(); err != nil { // [chainlock]
+			if err := ctx.Err(); err != nil { // [wickset]
 				return err
 			}
 			var wg sync.WaitGroup

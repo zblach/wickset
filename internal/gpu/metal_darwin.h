@@ -32,9 +32,9 @@ int clm_end(clm *c, clm_job *j, void *out, char **err);
 
 void clm_free(clm_job *j);
 
-// SHA-256 chains (sha256.cl): clm_sha_begin copies len bytes of chain states,
+// Iterated SHA-256 (sha256.cl): clm_sha_begin copies len bytes of step states,
 // 8 big-endian words each, to a new buffer, or returns NULL; clm_sha_iter
-// advances count chains iters hashes; clm_sha_read copies the states out;
+// advances count steps iters hashes; clm_sha_read copies the states out;
 // clm_sha_end frees the buffer.
 void *clm_sha_begin(clm *c, const void *state, size_t len);
 int clm_sha_iter(clm *c, void *state, uint32_t count, uint32_t iters, char **err);

@@ -1,6 +1,6 @@
-// Package alg is chainlock's algorithm registry (SPEC.md §3): the step
-// functions H a lock can be built from, each named by the ALG_ID byte that
-// leads its objects.
+// Package alg is wickset's algorithm registry (SPEC.md §3): the step
+// functions H a wick can be built from, each named by the ALG_ID byte that
+// leads its wicks.
 package alg
 
 import (
@@ -11,13 +11,13 @@ import (
 	"runtime"
 	"slices"
 
-	"chainlock/internal/argon2"
+	"wickset/internal/argon2"
 )
 
 // ErrUnknown reports an ALG_ID that is not defined in this build.
-var ErrUnknown = errors.New("chainlock: algorithm id not defined")
+var ErrUnknown = errors.New("wickset: algorithm id not defined")
 
-// ID is the ALG_ID byte that leads every object (SPEC.md §3).
+// ID is the ALG_ID byte that leads every wick (SPEC.md §3).
 type ID byte
 
 // Defined algorithms. The values are wire format, fixed by SPEC.md §3:
@@ -27,8 +27,8 @@ const (
 	_             ID = iota // 0x00 is never defined
 	Argon2idShort           // 0x01: Argon2id, 128 MiB, t = 5; SPEC.md §3.1
 	Argon2idLong            // 0x02: Argon2id, 128 MiB, t = 192; SPEC.md §3.2
-	SHA256Short             // 0x03: SHA-256 chain, K = 2^23; SPEC.md §3.3
-	SHA256Long              // 0x04: SHA-256 chain, K = 2^28; SPEC.md §3.4
+	SHA256Short             // 0x03: SHA-256 iterated K = 2^23 times; SPEC.md §3.3
+	SHA256Long              // 0x04: SHA-256 iterated K = 2^28 times; SPEC.md §3.4
 	idMax                   // one past the last defined id; not an algorithm
 )
 
@@ -53,13 +53,12 @@ func (id ID) String() string {
 // Alg is one entry of the registry. The format uses it only through
 // BlockSize and H; ID, Name and MemBytes describe it.
 //
-// The public entry points of package chain take an ID and resolve it through
-// Lookup, so an Alg implemented outside this package can never reach an
-// object.
+// The public entry points of package wick take an ID and resolve it through
+// Lookup, so an Alg implemented outside this package can never reach a wick.
 type Alg interface {
 	ID() ID
 	Name() string
-	// BlockSize is B, the length in bytes of S, of every chain value and of
+	// BlockSize is B, the length in bytes of S, of every value I[j] and of
 	// every step output.
 	BlockSize() int
 	// MemBytes is the working set of one H evaluation. Informational (for
@@ -118,15 +117,15 @@ func Argon2idParams(a Alg) (p argon2.Params, ok bool) {
 	return p, true
 }
 
-// SHA256Chain is a SHA-256 chain entry's step (SPEC.md §3.3): K hashes, the
-// first of Domain ‖ x, each one after of the 32 bytes before it.
-type SHA256Chain struct {
+// SHA256Iter is an iterated SHA-256 entry's step (SPEC.md §3.3): K hashes,
+// the first of Domain ‖ x, each one after of the 32 bytes before it.
+type SHA256Iter struct {
 	Domain []byte
 	K      uint64
 }
 
-// Start is the chain's first hash, of Domain ‖ x: what the other K-1 run on.
-func (c SHA256Chain) Start(x []byte) [32]byte {
+// Start is the step's first hash, of Domain ‖ x: what the other K-1 run on.
+func (c SHA256Iter) Start(x []byte) [32]byte {
 	return sha256.Sum256(append(c.Domain[:len(c.Domain):len(c.Domain)], x...))
 }
 
@@ -135,7 +134,7 @@ const chunk = 1 << 20
 
 // Run hashes h n times over, in chunks; after each it reports the hashes
 // done so far, if report is set, and stops with ctx's error once ctx is done.
-func (c SHA256Chain) Run(ctx context.Context, h [32]byte, n uint64, report func(done uint64)) ([32]byte, error) {
+func (c SHA256Iter) Run(ctx context.Context, h [32]byte, n uint64, report func(done uint64)) ([32]byte, error) {
 	for done := uint64(0); done < n; {
 		if err := ctx.Err(); err != nil {
 			return h, err
@@ -152,11 +151,11 @@ func (c SHA256Chain) Run(ctx context.Context, h [32]byte, n uint64, report func(
 	return h, nil
 }
 
-// sha256Alg is a SHA-256 chain registry entry (SPEC.md §3.3).
+// sha256Alg is an iterated SHA-256 registry entry (SPEC.md §3.3).
 type sha256Alg struct {
-	id    ID
-	name  string
-	chain SHA256Chain // the domain includes the entry's own id
+	id   ID
+	name string
+	iter SHA256Iter // the domain includes the entry's own id
 }
 
 func (a *sha256Alg) ID() ID         { return a.id }
@@ -172,23 +171,23 @@ func (a *sha256Alg) H(x []byte) []byte {
 func (a *sha256Alg) evalPartway(ctx context.Context, x []byte, partway Partway) ([]byte, error) {
 	var report func(uint64)
 	if partway != nil {
-		report = func(done uint64) { partway(done+1, a.chain.K) } // and the first, Start
+		report = func(done uint64) { partway(done+1, a.iter.K) } // and the first, Start
 	}
-	h, err := a.chain.Run(ctx, a.chain.Start(x), a.chain.K-1, report)
+	h, err := a.iter.Run(ctx, a.iter.Start(x), a.iter.K-1, report)
 	if err != nil {
 		return nil, err
 	}
 	return h[:], nil
 }
 
-// SHA256ChainOf is a's chain, for timing part of a step or running the chain
-// elsewhere (a GPU). ok is false if a is not a SHA-256 chain entry.
-func SHA256ChainOf(a Alg) (c SHA256Chain, ok bool) {
+// SHA256IterOf is a's iteration, for timing part of a step or running it
+// elsewhere (a GPU). ok is false if a is not an iterated SHA-256 entry.
+func SHA256IterOf(a Alg) (c SHA256Iter, ok bool) {
 	e, ok := a.(*sha256Alg)
 	if !ok {
-		return SHA256Chain{}, false
+		return SHA256Iter{}, false
 	}
-	return e.chain, true
+	return e.iter, true
 }
 
 // Eval is a.H(x), except that it returns ctx's error once ctx is done.
@@ -202,12 +201,12 @@ func Eval(ctx context.Context, a Alg, x []byte) ([]byte, error) {
 }
 
 // Partway reports how far through a step is: done of total units of work
-// (for a SHA-256 chain, hashes). It is called from the evaluating goroutine
+// (for iterated SHA-256, hashes). It is called from the evaluating goroutine
 // and should return promptly.
 type Partway func(done, total uint64)
 
 // EvalPartway is Eval, reporting to partway, if set, as the step goes: a
-// SHA-256 chain every million hashes or so; any other step not at all.
+// SHA-256 step every million hashes or so; any other step not at all.
 func EvalPartway(ctx context.Context, a Alg, x []byte, partway Partway) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -234,28 +233,28 @@ type evaler interface {
 // id. Together with testAlgs it is everything Lookup accepts.
 //
 // testAlgs is fixed at compile time by build tag: empty normally
-// (closed.go), cheap end-to-end test steps under -tags chainlock_testalgs
-// (testalgs.go). The unit tests' algorithms (package chain's tests) are
-// never in either table; those tests hand them straight to chain's internal
+// (closed.go), cheap end-to-end test steps under -tags wickset_testalgs
+// (testalgs.go). The unit tests' algorithms (package wick's tests) are
+// never in either table; those tests hand them straight to wick's internal
 // functions.
 var registry = [idMax]Alg{
 	Argon2idShort: &argon2idAlg{id: Argon2idShort, name: "argon2id-m128M-t5-p1", params: argon2.Params{
-		Salt: []byte("chainlock/v1::01"), MemoryKiB: 131072, Passes: 5, KeyLen: 32,
+		Salt: []byte("wickset/v1::01"), MemoryKiB: 131072, Passes: 5, KeyLen: 32,
 	}},
 	Argon2idLong: &argon2idAlg{id: Argon2idLong, name: "argon2id-m128M-t192-p1", params: argon2.Params{
-		Salt: []byte("chainlock/v1::02"), MemoryKiB: 131072, Passes: 192, KeyLen: 32,
+		Salt: []byte("wickset/v1::02"), MemoryKiB: 131072, Passes: 192, KeyLen: 32,
 	}},
-	SHA256Short: &sha256Alg{id: SHA256Short, name: "sha256-chain-k23", chain: SHA256Chain{
-		Domain: []byte("chainlock/v1::03"), K: 1 << 23,
+	SHA256Short: &sha256Alg{id: SHA256Short, name: "sha256-iter-k23", iter: SHA256Iter{
+		Domain: []byte("wickset/v1::03"), K: 1 << 23,
 	}},
-	SHA256Long: &sha256Alg{id: SHA256Long, name: "sha256-chain-k28", chain: SHA256Chain{
-		Domain: []byte("chainlock/v1::04"), K: 1 << 28,
+	SHA256Long: &sha256Alg{id: SHA256Long, name: "sha256-iter-k28", iter: SHA256Iter{
+		Domain: []byte("wickset/v1::04"), K: 1 << 28,
 	}},
 }
 
 // Lookup returns the defined algorithm for id. 0x00 and unassigned IDs are
 // never defined; the private-use range 0xF0–0xFF is empty unless built with
-// -tags chainlock_testalgs.
+// -tags wickset_testalgs.
 func Lookup(id ID) (Alg, bool) {
 	var a Alg
 	switch {

@@ -2,8 +2,11 @@
 go.work
 go.work.sum
 
-# chainlock files
-*.chainlock.tar
-*.key
-*.lock
+# wickset files: wicks, partly burned wicks, archives, payloads, keys
+*.wick
+*.wick.*
 *.payload
+*.key
+# and the old names, for files sealed before the rename
+*.chainlock.tar
+*.lock

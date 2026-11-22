@@ -10,13 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"chainlock/alg"
-	"chainlock/chain"
+	"wickset/alg"
+	"wickset/internal/store"
+	"wickset/wick"
 )
 
-// TestSealWithGPU seals real short-step locks on the GPU, then opens them on
+// TestSealWithGPU seals real short-step wicks on the GPU, then opens them on
 // the CPU, as any solver would: the GPU's steps are exactly the CPU's, or the
-// plaintext never comes back. The SHA-256 chain, ~45 s of one GPU thread a
+// plaintext never comes back. Iterated SHA-256, ~45 s of one GPU thread a
 // step, runs without -short.
 func TestSealWithGPU(t *testing.T) {
 	for _, id := range []alg.ID{alg.Argon2idShort, alg.SHA256Short} {
@@ -41,7 +42,7 @@ func sealWithGPU(t *testing.T, id alg.ID) {
 	e := &Env{
 		Note: func(n Note) { notes = append(notes, n.String()) },
 		Events: func(ev Event) { // serialized
-			if ev.Kind == StepEvent && ev.Step.Kind == chain.Began {
+			if ev.Kind == StepEvent && ev.Step.Kind == wick.Began {
 				workers[ev.Step.Worker] = true
 			}
 		},
@@ -63,8 +64,8 @@ func sealWithGPU(t *testing.T, id alg.ID) {
 		t.Fatal(err)
 	}
 	start = time.Now()
-	if err := (&Env{}).Open(t.Context(), OpenArgs{File: file + ".lock"}); err != nil {
-		t.Fatalf("the GPU-sealed lock does not open on the CPU: %v", err)
+	if err := (&Env{}).Open(t.Context(), OpenArgs{File: file + store.WickSuffix}); err != nil {
+		t.Fatalf("the GPU-sealed wick does not open on the CPU: %v", err)
 	}
 	t.Logf("opened 60 steps on one core in %v", time.Since(start).Round(time.Millisecond))
 	if got, _ := os.ReadFile(file); !bytes.Equal(got, plaintext) {

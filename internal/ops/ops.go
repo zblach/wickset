@@ -1,4 +1,4 @@
-// Package ops runs chainlock's operations on files, for any front end. The
+// Package ops runs wickset's operations on files, for any front end. The
 // CLI and the TUI differ only in how they gather arguments and how they
 // report: ops never prints, and reports through an Env instead.
 package ops
@@ -12,14 +12,14 @@ import (
 	"os"
 	"time"
 
-	"chainlock"
-	"chainlock/alg"
-	"chainlock/chain"
-	"chainlock/format"
-	"chainlock/internal/store"
+	"wickset"
+	"wickset/alg"
+	"wickset/format"
+	"wickset/internal/store"
+	"wickset/wick"
 )
 
-// SealArgs locks File behind N+1 steps, or, if Delay is set, as many steps
+// SealArgs seals File behind a wick of N+1 steps, or, if Delay is set, as many steps
 // as Delay takes on this machine.
 type SealArgs struct {
 	File string
@@ -29,7 +29,7 @@ type SealArgs struct {
 	N       int
 	Delay   time.Duration
 	Form    store.Form
-	Lock    string // FormFile and FormRaw: lock output (default FILE.lock)
+	Wick    string // FormFile and FormRaw: wick output (default FILE.wick)
 	Payload string // FormFile and FormRaw: payload output (default FILE.payload)
 	KeyOut  string // where to save the key, if anywhere; "-" for Stdout
 	Workers int
@@ -48,7 +48,7 @@ func (e *Env) Seal(ctx context.Context, a SealArgs) error {
 	if err := e.checkKeyOut(a.KeyOut); err != nil {
 		return err
 	}
-	if err := store.Absent(store.SealedPaths(a.File, a.Form, a.Lock, a.Payload)...); err != nil {
+	if err := store.Absent(store.SealedPaths(a.File, a.Form, a.Wick, a.Payload)...); err != nil {
 		return err
 	}
 	pt, err := os.ReadFile(a.File)
@@ -59,7 +59,7 @@ func (e *Env) Seal(ctx context.Context, a SealArgs) error {
 		a.Alg = AlgFor(a.Delay, e.GPU)
 		e.note(Detail, "algorithm %v for a delay of %s (no algorithm given; the long step from %s up)", a.Alg.ID(), FormatDelay(a.Delay), FormatDelay(LongDelay))
 	}
-	opts, b, gpu, err := e.withGPU(a.Alg, chain.Opts{Workers: a.Workers})
+	opts, b, gpu, err := e.withGPU(a.Alg, wick.Opts{Workers: a.Workers})
 	if err != nil {
 		return err
 	}
@@ -69,11 +69,11 @@ func (e *Env) Seal(ctx context.Context, a SealArgs) error {
 	}
 	n := steps - 1
 	opts.Report = e.stage("sealing", steps, expect)
-	lock, payload, key, err := chainlock.Seal(ctx, pt, chainlock.SealOpts{Alg: a.Alg.ID(), N: n, Opts: opts})
+	raw, payload, key, err := wickset.Seal(ctx, pt, wickset.SealOpts{Alg: a.Alg.ID(), N: n, Opts: opts})
 	if err != nil {
 		return err
 	}
-	w, err := store.WriteSealed(a.File, a.Form, a.Lock, a.Payload, lock, payload)
+	w, err := store.WriteSealed(a.File, a.Form, a.Wick, a.Payload, raw, payload)
 	if err != nil {
 		return err
 	}
@@ -84,9 +84,9 @@ func (e *Env) Seal(ctx context.Context, a SealArgs) error {
 	return e.writeKey(a.KeyOut, key)
 }
 
-// OpenArgs solves the lock File and decrypts its payload.
+// OpenArgs burns the wick File and decrypts its payload.
 type OpenArgs struct {
-	File    string // a lock in any form
+	File    string // a wick in any form
 	Payload string // default: the archive's own, or FILE.payload
 	Out     string // default: FILE, which must not exist
 	KeyOut  string // where to save the recovered key, if anywhere; "-" for Stdout
@@ -94,8 +94,8 @@ type OpenArgs struct {
 
 func (e *Env) Open(ctx context.Context, a OpenArgs) error {
 	// Everything that can fail without solving fails first: the key path and
-	// the lock's digest here, the output name below, the payload's digest and
-	// pairing in chainlock.Open.
+	// the wick's digest here, the output name below, the payload's digest and
+	// pairing in wickset.Open.
 	if err := e.checkKeyOut(a.KeyOut); err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func (e *Env) Open(ctx context.Context, a OpenArgs) error {
 	}
 	// One step at a time, on the CPU even in GPU mode: one core runs a single
 	// step faster than a GPU does.
-	pt, key, err := chainlock.Open(ctx, l.Obj, payload, e.stage("solving", l.Parsed.N+1, 0))
+	pt, key, err := wickset.Open(ctx, l.Obj, payload, e.stage("solving", l.Parsed.N+1, 0))
 	if err != nil {
 		return err
 	}
@@ -126,9 +126,9 @@ func (e *Env) Open(ctx context.Context, a OpenArgs) error {
 
 // BypassArgs decrypts a payload with a saved key, without solving.
 type BypassArgs struct {
-	File    string // a payload, or a lock to take the payload from
+	File    string // a payload, or a wick to take the payload from
 	Key     string // key file; "-" for Stdin
-	Payload string // when File is a lock: default the archive's own, or FILE.payload
+	Payload string // when File is a wick: default the archive's own, or FILE.payload
 	Out     string // default: FILE, which must not exist
 }
 
@@ -159,10 +159,10 @@ func (e *Env) Bypass(a BypassArgs) error {
 	return nil
 }
 
-// ExtendArgs adds Add steps to the lock File, or, if Delay is set, as many
+// ExtendArgs adds Add steps to the wick File, or, if Delay is set, as many
 // steps as Delay takes on this machine.
 type ExtendArgs struct {
-	File    string // a lock in any form; it is written back in the same form
+	File    string // a wick in any form; it is written back in the same form
 	Add     int
 	Delay   time.Duration
 	Out     string // default: replace File
@@ -181,7 +181,7 @@ func (e *Env) Extend(ctx context.Context, a ExtendArgs) error {
 		}
 	}
 	p := l.Parsed
-	opts, b, gpu, err := e.withGPU(p.Alg, chain.Opts{Workers: a.Workers})
+	opts, b, gpu, err := e.withGPU(p.Alg, wick.Opts{Workers: a.Workers})
 	if err != nil {
 		return err
 	}
@@ -190,7 +190,7 @@ func (e *Env) Extend(ctx context.Context, a ExtendArgs) error {
 		return err
 	}
 	opts.Report = e.stage("extending", add, expect)
-	ext, err := chain.Extend(ctx, l.Obj, add, opts)
+	ext, err := wick.Extend(ctx, l.Obj, add, opts)
 	if err != nil {
 		return err
 	}
@@ -202,21 +202,21 @@ func (e *Env) Extend(ctx context.Context, a ExtendArgs) error {
 	return nil
 }
 
-// Info describes a lock and the payload open would use with it.
+// Info describes a wick and the payload open would use with it.
 type Info struct {
 	Alg  alg.Alg
 	N    int
-	Size int // of the SPEC.md object
+	Size int // of the SPEC.md wick
 	Form store.Form
 	// PayloadWhere is where the payload was looked for, and PayloadErr why it
 	// is unusable: an fs.ErrNotExist if absent, or what the pre-solve check
-	// found. Nil means it pairs with this lock and its digest is intact.
+	// found. Nil means it pairs with this wick and its digest is intact.
 	PayloadWhere string
 	PayloadErr   error
 }
 
-// Describe reads the lock at path and checks its payload without solving: the
-// archive's own, or FILE.payload beside FILE.lock.
+// Describe reads the wick at path and checks its payload without solving: the
+// archive's own, or FILE.payload beside FILE.wick.
 func Describe(path string) (*Info, error) {
 	l, err := store.Load(path)
 	if err != nil {
@@ -231,5 +231,5 @@ func Describe(path string) (*Info, error) {
 	return in, nil
 }
 
-// PayloadMissing reports an Info whose lock has no payload beside it.
+// PayloadMissing reports an Info whose wick has no payload beside it.
 func (in *Info) PayloadMissing() bool { return errors.Is(in.PayloadErr, fs.ErrNotExist) }

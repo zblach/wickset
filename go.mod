@@ -1,4 +1,4 @@
-module chainlock
+module wickset
 
 go 1.26.0
 

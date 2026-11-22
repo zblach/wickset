@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"chainlock/alg"
-	"chainlock/internal/gpu"
+	"wickset/alg"
+	"wickset/internal/gpu"
+	"wickset/internal/store"
 )
 
 // TestGPUUnavailable: asking for the GPU in a build without one fails at
@@ -24,7 +25,7 @@ func TestGPUUnavailable(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "GPU") {
 		t.Fatalf("err %v", err)
 	}
-	if _, err := os.Stat(file + ".lock"); err == nil {
+	if _, err := os.Stat(file + store.WickSuffix); err == nil {
 		t.Fatal("sealed anyway")
 	}
 }

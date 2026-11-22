@@ -1,11 +1,11 @@
-package chainlock
+package wickset
 
 import (
 	"context"
 
-	"chainlock/alg"
-	"chainlock/chain"
-	"chainlock/format"
+	"wickset/alg"
+	"wickset/format"
+	"wickset/wick"
 )
 
 // SealOpts configures Seal: the algorithm, N, and how the parallel build
@@ -13,48 +13,48 @@ import (
 type SealOpts struct {
 	Alg alg.ID
 	N   int // the solver performs N+1 sequential steps; N >= 0
-	chain.Opts
+	wick.Opts
 }
 
-// Seal draws a fresh random S, locks it, and encrypts plaintext under it. lock
-// is the raw object (wrap it with format.EncodeLockFile to store it); payload
-// is a payload file bound to it (CONTAINER.md §3). key is S, for a holder who
-// wants to open the payload later without solving (format.OpenPayload);
-// discard it to keep no shortcut.
-func Seal(ctx context.Context, plaintext []byte, o SealOpts) (lock, payload []byte, key chain.Key, err error) {
-	// The lock comes first: the payload is bound to its block 0.
-	lock, key, err = chain.New(ctx, o.Alg, o.N, o.Opts)
+// Seal draws a fresh random S, hides it behind a wick, and encrypts plaintext
+// under it. raw is the wick (wrap it with format.EncodeWickFile to store it);
+// payload is a payload file bound to it (CONTAINER.md §3). key is S, for a
+// holder who wants to open the payload later without solving
+// (format.OpenPayload); discard it to keep no shortcut.
+func Seal(ctx context.Context, plaintext []byte, o SealOpts) (raw, payload []byte, key wick.Key, err error) {
+	// The wick comes first: the payload is bound to its block 0.
+	raw, key, err = wick.New(ctx, o.Alg, o.N, o.Opts)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	obj, err := chain.Parse(lock)
+	obj, err := wick.Parse(raw)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	if payload, err = format.SealPayload(key, obj, plaintext); err != nil {
 		return nil, nil, nil, err
 	}
-	return lock, payload, key, nil
+	return raw, payload, key, nil
 }
 
-// Open checks that payload is intact and belongs to the lock object lock,
-// then solves the lock and decrypts the payload. The checks come first, so a
+// Open checks that payload is intact and belongs to the raw wick obj, then
+// burns the wick and decrypts the payload. The checks come first, so a
 // damaged or mismatched payload fails before any evaluation of H. key is the
 // S that solving recovered, for opening again later with format.OpenPayload.
-// report, if set, is told of each step (chain.Solve).
-func Open(ctx context.Context, lock, payload []byte, report chain.Report) (plaintext []byte, key chain.Key, err error) {
-	o, err := chain.Parse(lock)
+// report, if set, is told of each step (wick.Solve).
+func Open(ctx context.Context, obj, payload []byte, report wick.Report) (plaintext []byte, key wick.Key, err error) {
+	o, err := wick.Parse(obj)
 	if err != nil {
 		return nil, nil, err
 	}
 	return open(ctx, o, payload, report)
 }
 
-func open(ctx context.Context, o *chain.Object, payload []byte, report chain.Report) ([]byte, chain.Key, error) {
+func open(ctx context.Context, o *wick.Object, payload []byte, report wick.Report) ([]byte, wick.Key, error) {
 	if err := format.CheckPayload(o, payload); err != nil {
 		return nil, nil, err
 	}
-	key, err := chain.Solve(ctx, o, report)
+	key, err := wick.Solve(ctx, o, report)
 	if err != nil {
 		return nil, nil, err
 	}

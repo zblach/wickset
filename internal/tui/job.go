@@ -8,13 +8,13 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"chainlock/internal/ops"
+	"wickset/internal/ops"
 )
 
 // A job is one operation running off the UI goroutine. The operation reports
 // through the job's Env, which only records; the UI reads the record as a
 // snapshot on each redraw. Nothing the operation calls ever waits on the UI,
-// so the progress callback, which chainlock calls under its own lock,
+// so the event callback, which package wick calls under its own mutex,
 // returns at once.
 type job struct {
 	title  string

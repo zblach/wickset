@@ -22,7 +22,7 @@ import (
 	"time"
 	"unsafe"
 
-	"chainlock/internal/argon2"
+	"wickset/internal/argon2"
 )
 
 // Built reports whether this build has a GPU backend: Metal, here.
@@ -45,8 +45,8 @@ type Device struct {
 	mu sync.Mutex // one batch at a time: each holds most of the GPU's memory
 	c  *C.clm
 
-	chainOnce  sync.Once
-	chainBatch int
+	iterOnce  sync.Once
+	iterBatch int
 }
 
 // Open compiles the kernel for the default Metal device. It takes seconds:
@@ -167,11 +167,11 @@ func (d *Device) batch(ctx context.Context, p argon2.Params, inputs [][]byte, re
 	return out, nil
 }
 
-// Chain hashes each of hs n times over with SHA-256, as alg.SHA256Chain.Run
-// does, one thread a chain. It runs in dispatches of chainDispatch hashes;
-// after each it reports the hashes done per chain, if report is set, and
+// Iterate hashes each of hs n times over with SHA-256, as alg.SHA256Iter.Run
+// does, one thread each. It runs in dispatches of iterDispatch hashes;
+// after each it reports the hashes done per step, if report is set, and
 // stops with ctx's error once ctx is done.
-func (d *Device) Chain(ctx context.Context, hs [][32]byte, n uint64, report func(done uint64)) ([][32]byte, error) {
+func (d *Device) Iterate(ctx context.Context, hs [][32]byte, n uint64, report func(done uint64)) ([][32]byte, error) {
 	if len(hs) == 0 {
 		return nil, nil
 	}
@@ -185,17 +185,17 @@ func (d *Device) Chain(ctx context.Context, hs [][32]byte, n uint64, report func
 	}
 	s := C.clm_sha_begin(d.c, unsafe.Pointer(&words[0]), C.size_t(len(words)))
 	if s == nil {
-		return nil, errors.New("gpu: could not allocate the chains")
+		return nil, errors.New("gpu: could not allocate the steps")
 	}
 	defer C.clm_sha_end(s)
 	for done := uint64(0); done < n; {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		m := min(n-done, chainDispatch)
+		m := min(n-done, iterDispatch)
 		var cerr *C.char
 		if C.clm_sha_iter(d.c, s, C.uint32_t(len(hs)), C.uint32_t(m), &cerr) != 0 {
-			return nil, cError("gpu: SHA-256 chains", cerr)
+			return nil, cError("gpu: iterated SHA-256", cerr)
 		}
 		done += m
 		if report != nil {
@@ -212,21 +212,21 @@ func (d *Device) Chain(ctx context.Context, hs [][32]byte, n uint64, report func
 	return out, nil
 }
 
-// ChainBatch is how many chains Chain runs at once to best effect here: one
+// IterBatch is how many steps Iterate runs at once to best effect here: one
 // thread is far slower than a CPU core, so a GPU needs many. It is found on
-// first use, in a second or two, by doubling the chains until throughput
+// first use, in a second or two, by doubling the steps until throughput
 // stops growing.
-func (d *Device) ChainBatch() int {
-	d.chainOnce.Do(func() { d.chainBatch = d.calibrate() })
-	return d.chainBatch
+func (d *Device) IterBatch() int {
+	d.iterOnce.Do(func() { d.iterBatch = d.calibrate() })
+	return d.iterBatch
 }
 
 func (d *Device) calibrate() int {
-	const hashes = 1 << 11 // per chain, per probe: one dispatch
-	best, at, flat := 0.0, minChains, 0
-	for n := minChains; n <= maxChains && flat < 2; n *= 2 {
+	const hashes = 1 << 11 // per step, per probe: one dispatch
+	best, at, flat := 0.0, minBatch, 0
+	for n := minBatch; n <= maxBatch && flat < 2; n *= 2 {
 		start := time.Now()
-		if _, err := d.Chain(context.Background(), make([][32]byte, n), hashes, nil); err != nil {
+		if _, err := d.Iterate(context.Background(), make([][32]byte, n), hashes, nil); err != nil {
 			break
 		}
 		rate := float64(n) / time.Since(start).Seconds()

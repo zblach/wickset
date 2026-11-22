@@ -1,4 +1,4 @@
-package chain
+package wick
 
 import (
 	"encoding/base64"
@@ -9,10 +9,10 @@ import (
 )
 
 // ErrKey reports text that is not a key in Encode's form.
-var ErrKey = errors.New("chainlock: malformed key")
+var ErrKey = errors.New("wickset: malformed key")
 
-// Key is a lock's secret S, which is also its payload's key. Anyone holding it
-// opens the payload at once, without solving, however far the lock has since
+// Key is a wick's secret S, which is also its payload's key. Anyone holding it
+// opens the payload at once, without solving, however far the wick has since
 // been extended. New draws it and Solve recovers it; nothing here takes a
 // caller's.
 //
@@ -21,8 +21,8 @@ var ErrKey = errors.New("chainlock: malformed key")
 type Key []byte
 
 const (
-	keyPrefix   = "chainlock-key-v1:"
-	keyRedacted = "chain.Key(redacted)"
+	keyPrefix   = "wickset-key-v1:"
+	keyRedacted = "wick.Key(redacted)"
 )
 
 func (Key) String() string   { return keyRedacted }
@@ -31,7 +31,7 @@ func (Key) GoString() string { return keyRedacted }
 // Format prints the redaction for every verb, %x included.
 func (Key) Format(f fmt.State, _ rune) { io.WriteString(f, keyRedacted) }
 
-// Encode returns the key's text form, chainlock-key-v1: followed by its bytes
+// Encode returns the key's text form, wickset-key-v1: followed by its bytes
 // in unpadded URL-safe base64. ParseKey reads it back.
 func (k Key) Encode() string {
 	return keyPrefix + base64.RawURLEncoding.EncodeToString(k)

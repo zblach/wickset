@@ -1,22 +1,22 @@
-// Package chain is the lock object of SPEC.md: a chain of steps of one
-// algorithm, built in parallel (New, Extend) and solved in serial (Solve).
-// It knows nothing of files or payloads; package format does.
-package chain
+// Package wick is the wick of SPEC.md: steps of one algorithm, built in
+// parallel (New, Extend) and burned in serial (Solve). It knows nothing of
+// files or payloads; package format does.
+package wick
 
 import (
 	"errors"
 	"math"
 
-	"chainlock/alg"
+	"wickset/alg"
 )
 
 var (
-	ErrFormat    = errors.New("chainlock: malformed object")
-	ErrSteps     = errors.New("chainlock: invalid step count")
-	ErrSecretLen = errors.New("chainlock: secret length does not match algorithm block length")
+	ErrFormat    = errors.New("wickset: malformed wick")
+	ErrSteps     = errors.New("wickset: invalid step count")
+	ErrSecretLen = errors.New("wickset: secret length does not match algorithm block length")
 )
 
-// Object is a parsed lock object (SPEC.md §2). It aliases the input bytes.
+// Object is a parsed wick (SPEC.md §2). It aliases the input bytes.
 type Object struct {
 	Alg alg.Alg
 	N   int // the solver performs N+1 sequential steps
@@ -48,10 +48,10 @@ func parseAs(a alg.Alg, b []byte) (*Object, error) {
 	return &Object{Alg: a, N: body/bs - 2, raw: b}, nil
 }
 
-// Size returns len(object) for algorithm a and step parameter n.
+// Size returns a wick's length in bytes for algorithm a and step parameter n.
 func Size(a alg.Alg, n int) int { return 1 + (n+2)*a.BlockSize() }
 
-// Block returns chain block j, 0..N+1, aliasing the object. Block 0 hides S
+// Block returns block j, 0..N+1, aliasing the wick. Block 0 hides S
 // and is never changed by extension, which is why a payload is bound to it.
 func (o *Object) Block(j int) []byte {
 	bs := o.Alg.BlockSize()

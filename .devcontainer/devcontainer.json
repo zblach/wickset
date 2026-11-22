@@ -1,9 +1,9 @@
 {
-  "name": "chainlock",
+  "name": "wickset",
   "image": "mcr.microsoft.com/devcontainers/go:2-1.27-trixie",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/chainlock,type=bind",
   "workspaceFolder": "/workspaces/chainlock",
-  "postCreateCommand": "go mod download && go test -short -count=1 -tags chainlock_testalgs ./...",
+  "postCreateCommand": "go mod download && go test -short -count=1 -tags wickset_testalgs ./...",
   "customizations": {
     "vscode": { "extensions": ["golang.go"] }
   }

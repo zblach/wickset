@@ -1,12 +1,12 @@
-package chain
+package wick
 
 import (
 	"context"
 
-	"chainlock/alg"
+	"wickset/alg"
 )
 
-// Solve walks the chain of o from I[N] to S (SPEC.md §6): N+1 sequential
+// Solve burns the wick o from I[N] down to S (SPEC.md §6): N+1 sequential
 // evaluations of H, on the CPU, one core being faster at a single step than
 // a GPU. The result has no check of its own; authenticate whatever S
 // protects. A solve is one worker, reporting its steps in the order it takes

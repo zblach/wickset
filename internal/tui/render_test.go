@@ -15,9 +15,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"chainlock/alg"
-	"chainlock/internal/ops"
-	"chainlock/internal/store"
+	"wickset/alg"
+	"wickset/internal/ops"
+	"wickset/internal/store"
 )
 
 var dump = flag.String("screens", "", "write every synthetic screen to this directory, to read a change by")
@@ -25,7 +25,7 @@ var dump = flag.String("screens", "", "write every synthetic screen to this dire
 // t0 is the synthetic instant every frame here is drawn at.
 var t0 = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 
-// solving is an Open of a long-step lock, 3 s into step 3 of 219.
+// solving is an Open of a long-step wick, 3 s into step 3 of 219.
 func solving(total, done int) snapshot {
 	return snapshot{Run: ops.Run{
 		Stage: "solving", Start: t0.Add(-35 * time.Second), Done: done, Total: total,
@@ -46,8 +46,8 @@ func busy(n, first int) []ops.Worker {
 
 // frames are synthetic run screens: any state, drawn without running anything.
 var frames = map[string]runFrame{
-	"open-long":     {title: "Opening notes.chainlock.tar", start: t0.Add(-35 * time.Second), now: t0, run: solving(219, 2)},
-	"open-millions": {title: "Opening big.lock", start: t0.Add(-35 * time.Second), now: t0, run: solving(3_000_000, 1_234_567)},
+	"open-long":     {title: "Opening notes.wick.tar", start: t0.Add(-35 * time.Second), now: t0, run: solving(219, 2)},
+	"open-millions": {title: "Opening big.wick", start: t0.Add(-35 * time.Second), now: t0, run: solving(3_000_000, 1_234_567)},
 	// Ten workers on 120 steps: the work under way shows as its own span.
 	"seal-ten": {title: "Sealing notes.txt", start: t0.Add(-20 * time.Second), now: t0, run: snapshot{Run: ops.Run{
 		Stage: "sealing", Start: t0.Add(-18 * time.Second), Done: 40, Total: 120, Claimed: 50,
@@ -87,7 +87,7 @@ var frames = map[string]runFrame{
 
 // results are synthetic result screens.
 var results = map[string]*result{
-	"info": {title: "Checking notes.txt.lock", act: actInfo, elapsed: 7 * time.Millisecond, value: &ops.Info{
+	"info": {title: "Checking notes.txt.wick", act: actInfo, elapsed: 7 * time.Millisecond, value: &ops.Info{
 		Alg: mustAlg(alg.Argon2idLong), N: 76000, Size: 1 + 76002*32, Form: store.FormFile,
 		PayloadWhere: "notes.txt.payload",
 	}},
@@ -100,20 +100,20 @@ var results = map[string]*result{
 			{N: 999_999, Solve: 353000 * time.Second, Seal: 133333 * time.Second, Size: 32000033},
 		},
 	}},
-	"failed": {title: "Opening notes.txt.lock", act: actOpen, elapsed: 3 * time.Millisecond,
+	"failed": {title: "Opening notes.txt.wick", act: actOpen, elapsed: 3 * time.Millisecond,
 		err: errors.New("notes.txt already exists; give --out to choose where the plaintext goes")},
 	"cancelled": {title: "Sealing notes.txt", act: actSeal, cancelled: true, err: context.Canceled},
 	// Bench and Info return their zero value with an error: no panel, no panic.
 	"bench-cancelled": {title: "Timing 0x02 (argon2id-m128M-t192-p1)", act: actBench, cancelled: true,
 		err: context.Canceled, value: ops.Bench{}},
-	"info-failed": {title: "Checking notes.txt", act: actInfo, err: errors.New("notes.txt: chainlock: malformed object"),
+	"info-failed": {title: "Checking notes.txt", act: actInfo, err: errors.New("notes.txt: wickset: malformed wick"),
 		value: (*ops.Info)(nil)},
 	"sealed": {title: "Sealing notes.txt", act: actSeal, elapsed: 3*time.Hour + 2*time.Minute, notes: []ops.Note{
 		{Kind: ops.Detail, Text: "algorithm 0x01 (argon2id-m128M-t5-p1) for a delay of 12h (no algorithm given; the long step from 1d up)"},
 		{Kind: ops.Detail, Text: "measured step 380ms → 113693 sequential steps for 12h on this machine"},
 		{Kind: ops.Warning, Text: "argon2id-m128M-t5-p1 uses 128 MiB per evaluation; 8 parallel workers need 1 GiB (set fewer workers to lower)"},
 		{Kind: ops.Detail, Text: "sealing computes all 113693 steps, the solver's whole work, split 4 ways: at least 3h0m0s here"},
-		{Kind: ops.Wrote, Text: "wrote notes.txt.lock (3.5 MiB, N=113692, 113693 steps)"},
+		{Kind: ops.Wrote, Text: "wrote notes.txt.wick (3.5 MiB, N=113692, 113693 steps)"},
 		{Kind: ops.Wrote, Text: "wrote notes.txt.payload (108 B, encrypted)"},
 		{Kind: ops.Wrote, Text: "wrote key to notes.key: it opens the encrypted file at once, without solving"},
 	}},
@@ -216,7 +216,7 @@ func TestScreens(t *testing.T) {
 				t.Errorf("%s line %d: %d columns in a %d-column window\n%s", name, i+1, w, width, l)
 			}
 		}
-		if !strings.Contains(s.text, "chainlock") || !strings.Contains(s.text, s.help) || strings.Contains(s.text, "%!") {
+		if !strings.Contains(s.text, "wickset") || !strings.Contains(s.text, s.help) || strings.Contains(s.text, "%!") {
 			t.Errorf("%s: no title, no help line %q, or a formatting slip:\n%s", name, s.help, s.text)
 		}
 		if r := s.result; r != nil && r.err != nil && strings.Contains(s.text, "╭") {

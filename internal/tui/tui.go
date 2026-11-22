@@ -1,4 +1,4 @@
-// Package tui is chainlock's interactive terminal interface: a menu of the
+// Package tui is wickset's interactive terminal interface: a menu of the
 // CLI's operations, a form for each, and live progress while one runs. It
 // runs the same package ops as the CLI, so files, checks and messages match.
 package tui
@@ -18,7 +18,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"chainlock/internal/ops"
+	"wickset/internal/ops"
 )
 
 // Run shows the TUI until the user quits. file, if given, preselects the
@@ -323,7 +323,7 @@ func (m *model) View() tea.View {
 	}
 	v := tea.NewView(chrome(m.width, ops.TestBuild(), m.gpu, parts, m.helpLine()))
 	v.AltScreen = true
-	v.WindowTitle = "chainlock"
+	v.WindowTitle = "wickset"
 	if m.job != nil {
 		v.ProgressBar = tea.NewProgressBar(tea.ProgressBarDefault, int(100*m.job.snapshot().Fraction()))
 	}

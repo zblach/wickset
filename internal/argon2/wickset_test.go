@@ -1,6 +1,6 @@
 package argon2
 
-// chainlock's tests of its copy; argon2_test.go is x/crypto's own.
+// wickset's tests of its copy; argon2_test.go is x/crypto's own.
 
 import (
 	"bytes"

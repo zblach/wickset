@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"chainlock/alg"
-	"chainlock/internal/ops"
+	"wickset/alg"
+	"wickset/internal/ops"
 )
 
 // algFlag is a defined algorithm given by id (1, 0x01) or by name
-// (sha256-chain-k23). Ids that don't fit a byte are rejected, not wrapped.
+// (sha256-iter-k23). Ids that don't fit a byte are rejected, not wrapped.
 type algFlag struct{ alg.Alg }
 
 func (f *algFlag) UnmarshalText(text []byte) error {

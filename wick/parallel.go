@@ -1,4 +1,4 @@
-package chain
+package wick
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"chainlock/alg"
+	"wickset/alg"
 )
 
 // A Report is told what a run of evaluations of H does, as it does it: New,
@@ -59,9 +59,9 @@ type Batcher interface {
 	Batch(ctx context.Context, a alg.Alg, xs [][]byte, partway alg.Partway) ([][]byte, error)
 }
 
-// ErrBatchMismatch reports a Batcher output that is not H's. Such an object
+// ErrBatchMismatch reports a Batcher output that is not H's. Such a wick
 // would never open: its solver computes H itself, and reaches a different S.
-var ErrBatchMismatch = errors.New("chainlock: a batch evaluation differs from the step function; stopped")
+var ErrBatchMismatch = errors.New("wickset: a batch evaluation differs from the step function; stopped")
 
 // Opts is how a parallel run of New or Extend goes: what computes, and whom
 // it tells.

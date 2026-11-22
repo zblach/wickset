@@ -1,12 +1,12 @@
-package chain
+package wick
 
 import (
 	"context"
 
-	"chainlock/alg"
+	"wickset/alg"
 )
 
-// New draws a fresh random S and builds a lock object hiding it behind n+1
+// New draws a fresh random S and builds a wick hiding it behind n+1
 // sequential steps of the algorithm id (SPEC.md §5). Total CPU equals the
 // solver's; wall-clock is roughly that divided by the workers. It returns S
 // as the Key: nothing here takes a caller's secret or randomness.
@@ -41,7 +41,7 @@ func create(ctx context.Context, a alg.Alg, n int, s []byte, o Opts) ([]byte, er
 	return build(ctx, a, xs, s, o)
 }
 
-// build emits the object for chain values xs = I[0..N] and secret s.
+// build emits the wick for values xs = I[0..N] and secret s.
 func build(ctx context.Context, a alg.Alg, xs [][]byte, s []byte, o Opts) ([]byte, error) {
 	outs, err := computeOutputs(ctx, a, xs, o)
 	if err != nil {

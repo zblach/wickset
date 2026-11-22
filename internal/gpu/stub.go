@@ -5,7 +5,7 @@ package gpu
 import (
 	"context"
 
-	"chainlock/internal/argon2"
+	"wickset/internal/argon2"
 )
 
 // Built reports whether this build has a GPU backend.
@@ -32,8 +32,8 @@ func (d *Device) HashPartway(context.Context, argon2.Params, [][]byte, func(uint
 	return nil, ErrUnavailable
 }
 
-func (d *Device) ChainBatch() int { return 0 }
+func (d *Device) IterBatch() int { return 0 }
 
-func (d *Device) Chain(context.Context, [][32]byte, uint64, func(uint64)) ([][32]byte, error) {
+func (d *Device) Iterate(context.Context, [][32]byte, uint64, func(uint64)) ([][32]byte, error) {
 	return nil, ErrUnavailable
 }

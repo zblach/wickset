@@ -3,8 +3,8 @@ package ops
 import (
 	"errors"
 
-	"chainlock/chain"
-	"chainlock/internal/store"
+	"wickset/internal/store"
+	"wickset/wick"
 )
 
 var errNoStream = errors.New("'-' is not available here; give the key file a path")
@@ -21,11 +21,11 @@ func (e *Env) checkKeyOut(path string) error {
 		}
 		return nil
 	}
-	return store.Absent(path) // an existing key file may be another lock's only shortcut
+	return store.Absent(path) // an existing key file may be another wick's only shortcut
 }
 
 // writeKey saves key to path, to Stdout for "-", or nowhere for "".
-func (e *Env) writeKey(path string, key chain.Key) error {
+func (e *Env) writeKey(path string, key wick.Key) error {
 	switch path {
 	case "":
 		return nil
@@ -41,7 +41,7 @@ func (e *Env) writeKey(path string, key chain.Key) error {
 
 // readKey reads a key from path, or from Stdin for "-", warning when others
 // could read its file.
-func (e *Env) readKey(path string) (chain.Key, error) {
+func (e *Env) readKey(path string) (wick.Key, error) {
 	if path == "-" {
 		if e.Stdin == nil {
 			return nil, errNoStream

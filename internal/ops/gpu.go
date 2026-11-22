@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"chainlock/alg"
-	"chainlock/chain"
-	"chainlock/internal/gpu"
+	"wickset/alg"
+	"wickset/internal/gpu"
+	"wickset/wick"
 )
 
 // device is the process's GPU, opened (and its kernels compiled) on first use.
@@ -18,18 +18,18 @@ var device = sync.OnceValues(gpu.Open)
 // or "" if none: for a front end deciding whether to offer one.
 func GPUName() string { return gpu.Name() }
 
-// batcher runs an algorithm's steps on the GPU, for chain: Argon2id through
-// the parameters its own step uses, at most size at a time; a SHA-256 chain
-// from its first hash, taken here, as many at a time as the GPU runs to best
-// effect.
+// batcher runs an algorithm's steps on the GPU, for package wick: Argon2id
+// through the parameters its own step uses, at most size at a time; iterated
+// SHA-256 from each step's first hash, taken here, as many at a time as the
+// GPU runs to best effect.
 type batcher struct {
 	d    *gpu.Device
 	size int // Argon2id steps the memory budget holds
 }
 
 func (b *batcher) BatchSize(a alg.Alg) int {
-	if _, ok := alg.SHA256ChainOf(a); ok {
-		return b.d.ChainBatch()
+	if _, ok := alg.SHA256IterOf(a); ok {
+		return b.d.IterBatch()
 	}
 	p, ok := alg.Argon2idParams(a)
 	if !ok {
@@ -39,7 +39,7 @@ func (b *batcher) BatchSize(a alg.Alg) int {
 }
 
 func (b *batcher) Batch(ctx context.Context, a alg.Alg, xs [][]byte, partway alg.Partway) ([][]byte, error) {
-	c, ok := alg.SHA256ChainOf(a)
+	c, ok := alg.SHA256IterOf(a)
 	if !ok {
 		p, _ := alg.Argon2idParams(a)
 		return b.d.HashPartway(ctx, p, xs, partway)
@@ -48,7 +48,7 @@ func (b *batcher) Batch(ctx context.Context, a alg.Alg, xs [][]byte, partway alg
 	if partway != nil {
 		report = func(done uint64) { partway(done+1, c.K) } // and the first, Start
 	}
-	hs, err := b.d.Chain(ctx, starts(c, xs), c.K-1, report)
+	hs, err := b.d.Iterate(ctx, starts(c, xs), c.K-1, report)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (b *batcher) Batch(ctx context.Context, a alg.Alg, xs [][]byte, partway alg
 	return out, nil
 }
 
-func starts(c alg.SHA256Chain, xs [][]byte) [][32]byte {
+func starts(c alg.SHA256Iter, xs [][]byte) [][32]byte {
 	hs := make([][32]byte, len(xs))
 	for i, x := range xs {
 		hs[i] = c.Start(x)
@@ -67,15 +67,16 @@ func starts(c alg.SHA256Chain, xs [][]byte) [][32]byte {
 	return hs
 }
 
-// sampleTime is the least a GPU timing of part of a SHA-256 chain runs.
+// sampleTime is the least a GPU timing of part of an iterated SHA-256 step
+// runs.
 const sampleTime = 250 * time.Millisecond
 
-// sample times a's steps over xs side by side on the GPU: whole, or for a
-// SHA-256 chain, each chain's first hashes, doubling them until a run takes
-// sampleTime, as every hash of a chain costs the same. It returns the last
-// run's time and the share of a step each chain ran.
+// sample times a's steps over xs side by side on the GPU: whole, or for
+// iterated SHA-256, each step's first hashes, doubling them until a run
+// takes sampleTime, as every hash of a step costs the same. It returns the
+// last run's time and the share of a step each ran.
 func (b *batcher) sample(ctx context.Context, a alg.Alg, xs [][]byte) (time.Duration, float64, error) {
-	c, ok := alg.SHA256ChainOf(a)
+	c, ok := alg.SHA256IterOf(a)
 	if !ok {
 		start := time.Now()
 		_, err := b.Batch(ctx, a, xs, nil)
@@ -85,7 +86,7 @@ func (b *batcher) sample(ctx context.Context, a alg.Alg, xs [][]byte) (time.Dura
 	for n := uint64(1 << 12); ; n *= 2 {
 		n = min(n, c.K-1)
 		start := time.Now()
-		if _, err := b.d.Chain(ctx, hs, n, nil); err != nil {
+		if _, err := b.d.Iterate(ctx, hs, n, nil); err != nil {
 			return 0, 0, err
 		}
 		if el := time.Since(start); el >= sampleTime || n == c.K-1 {
@@ -94,7 +95,7 @@ func (b *batcher) sample(ctx context.Context, a alg.Alg, xs [][]byte) (time.Dura
 	}
 }
 
-// gpuBatcher is the GPU, in GPU mode, as a chain.Batcher for a's steps, and
+// gpuBatcher is the GPU, in GPU mode, as a wick.Batcher for a's steps, and
 // how many it holds at a time. Argon2id steps fill memory: as many as its
 // batches take, within half the memory the device recommends, less the step
 // the CPU checks each batch with. On Apple silicon that memory is the whole
@@ -125,7 +126,7 @@ func (e *Env) gpuBatcher(a alg.Alg) (*batcher, int, error) {
 
 // withGPU gives o, a run of a's steps, to the GPU in GPU mode. The workers
 // compute nothing unless the GPU fails, when they finish its work.
-func (e *Env) withGPU(a alg.Alg, o chain.Opts) (chain.Opts, *batcher, int, error) {
+func (e *Env) withGPU(a alg.Alg, o wick.Opts) (wick.Opts, *batcher, int, error) {
 	b, n, err := e.gpuBatcher(a)
 	if err != nil || b == nil {
 		return o, nil, 0, err

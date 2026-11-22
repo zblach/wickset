@@ -4,7 +4,7 @@ import (
 	"slices"
 	"time"
 
-	"chainlock/chain"
+	"wickset/wick"
 )
 
 // An Event is one thing an operation's work did, stamped with when it did
@@ -21,7 +21,7 @@ type Event struct {
 	Total  int
 	Expect time.Duration
 	// StepEvent: what one of the run's workers did.
-	Step chain.Event
+	Step wick.Event
 }
 
 // EventKind is what an Event tells.
@@ -42,14 +42,14 @@ func (e *Env) emit(ev Event) {
 }
 
 // stage begins the run named label, of total steps, expected to take about
-// expect each, and returns the chain.Report its workers' steps go to; nil if
+// expect each, and returns the wick.Report its workers' steps go to; nil if
 // nothing listens.
-func (e *Env) stage(label string, total int, expect time.Duration) chain.Report {
+func (e *Env) stage(label string, total int, expect time.Duration) wick.Report {
 	if e.Events == nil {
 		return nil
 	}
 	e.emit(Event{Stage: label, Kind: StageBegan, Total: total, Expect: expect})
-	return func(s chain.Event) { e.emit(Event{Stage: label, Kind: StepEvent, Step: s}) }
+	return func(s wick.Event) { e.emit(Event{Stage: label, Kind: StepEvent, Step: s}) }
 }
 
 // Run is the run of steps under way, as its events tell it, for a front end
@@ -101,17 +101,17 @@ func (r Run) Apply(ev Event) Run {
 	}
 	w := &r.Workers[s.Worker]
 	switch s.Kind {
-	case chain.Began:
+	case wick.Began:
 		*w = Worker{First: s.First, N: s.N, Since: ev.At}
 		r.Claimed = max(r.Claimed, s.First+s.N)
 		if s.N > 1 {
 			r.Batch = max(r.Batch, s.N)
 		}
-	case chain.Partway:
+	case wick.Partway:
 		if s.OfParts > 0 {
 			w.Part = float64(s.Part) / float64(s.OfParts)
 		}
-	case chain.Finished:
+	case wick.Finished:
 		// A batch's steps run side by side and finish together: its time is
 		// its own, not one step's.
 		avg := &r.StepAvg
@@ -129,7 +129,7 @@ func (r Run) Apply(ev Event) Run {
 			r.Rate = float64(r.Done) / el.Seconds()
 			r.ETA = time.Duration(float64(r.Total-r.Done) / r.Rate * float64(time.Second))
 		}
-	case chain.Idle:
+	case wick.Idle:
 		*w = Worker{First: -1, Idle: true}
 	}
 	return r

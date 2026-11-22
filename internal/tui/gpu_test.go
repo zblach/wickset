@@ -8,17 +8,17 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"chainlock/internal/ops"
+	"wickset/internal/ops"
 )
 
-// TestGPUTitle: the title says chainlock[gpu] when the TUI was started with
+// TestGPUTitle: the title says wickset[gpu] when the TUI was started with
 // the GPU, and a job then runs with it.
 func TestGPUTitle(t *testing.T) {
 	for _, on := range []bool{false, true} {
 		m := newModel(context.Background(), "")
 		m.gpu = on
 		m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-		if v := ansi.Strip(m.View().Content); strings.Contains(v, "chainlock[gpu]") != on {
+		if v := ansi.Strip(m.View().Content); strings.Contains(v, "wickset[gpu]") != on {
 			t.Fatalf("started with the GPU %v:\n%s", on, v)
 		}
 		var got bool

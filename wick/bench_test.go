@@ -1,19 +1,19 @@
 //go:build unix
 
-package chain
+package wick
 
 import (
 	"runtime"
 	"syscall"
 	"testing"
 
-	"chainlock/alg"
+	"wickset/alg"
 )
 
 // Benchmarks for the real algorithms. Run one at a time, so peak RSS belongs
 // to that benchmark:
 //
-//	go test -run '^$' -bench 'Step/argon2id-m128M-t5' -benchtime 8x ./chain
+//	go test -run '^$' -bench 'Step/argon2id-m128M-t5' -benchtime 8x ./wick
 
 // reportPeakRSS reports the process's peak resident set size so far.
 func reportPeakRSS(b *testing.B) {

@@ -4,11 +4,11 @@ The `.go` and `.s` files and `LICENSE` (BSD-3-Clause) are
 `golang.org/x/crypto/argon2` from x/crypto v0.59.0, with one change:
 `argon2.go` takes a context, checked at each of Argon2's four sync points a
 pass, and exports `IDKeyContext`. `argon2.go.patch` is that change, every line
-of it; nothing else differs, and the changed lines say `[chainlock]`.
+of it; nothing else differs, and the changed lines say `[wickset]`.
 `argon2_test.go`, with RFC 9106's vectors, is x/crypto's own and unchanged.
 
 `SHA256SUMS` records the files as vendored, and `TestVendored` fails if any
-changes. `hasher.go` and `chainlock_test.go` are chainlock's: the API every
+changes. `hasher.go` and `wickset_test.go` are wickset's: the API every
 Argon2id backend implements (`Hasher`: this CPU one, and the GPU in
 `internal/gpu`), and the tests holding this copy to x/crypto itself.
 

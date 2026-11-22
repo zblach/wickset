@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"chainlock/internal/argon2"
+	"wickset/internal/argon2"
 )
 
 // A Device is an Argon2id backend like any other, in every build.
@@ -51,7 +51,7 @@ func TestSource(t *testing.T) {
 			t.Errorf("unexpanded: %s", line)
 		}
 	}
-	for _, s := range []string{"argon2_fill_segment", "chainlock_argon2_fill", "sha256_transform", "chainlock_sha256_iter", "#include <metal_stdlib>"} {
+	for _, s := range []string{"argon2_fill_segment", "wickset_argon2_fill", "sha256_transform", "wickset_sha256_iter", "#include <metal_stdlib>"} {
 		if !strings.Contains(src, s) {
 			t.Errorf("source lacks %q", s)
 		}
@@ -61,10 +61,10 @@ func TestSource(t *testing.T) {
 	}
 }
 
-// TestJob: the job is chainlock_job_t's size, with the options x/crypto
+// TestJob: the job is wickset_job_t's size, with the options x/crypto
 // would use.
 func TestJob(t *testing.T) {
-	p := argon2.Params{Salt: []byte("chainlock/v1::01"), MemoryKiB: 262145, Passes: 3, KeyLen: 32}
+	p := argon2.Params{Salt: []byte("wickset/v1::01"), MemoryKiB: 262145, Passes: 3, KeyLen: 32}
 	if j := job(p, 5, 32); len(j) != 12*4+256 {
 		t.Fatalf("job is %d bytes", len(j))
 	}

@@ -84,10 +84,10 @@ clm *clm_open(const char *source, const char *macros, char **err) {
       clm_close(c);
       return NULL;
     }
-    c->init = pipeline(c->dev, lib, @"chainlock_argon2_init", err);
-    if (c->init != nil) c->fill = pipeline(c->dev, lib, @"chainlock_argon2_fill", err);
-    if (c->fill != nil) c->final = pipeline(c->dev, lib, @"chainlock_argon2_final", err);
-    if (c->final != nil) c->sha = pipeline(c->dev, lib, @"chainlock_sha256_iter", err);
+    c->init = pipeline(c->dev, lib, @"wickset_argon2_init", err);
+    if (c->init != nil) c->fill = pipeline(c->dev, lib, @"wickset_argon2_fill", err);
+    if (c->fill != nil) c->final = pipeline(c->dev, lib, @"wickset_argon2_final", err);
+    if (c->final != nil) c->sha = pipeline(c->dev, lib, @"wickset_sha256_iter", err);
     [lib release];
     if (c->sha == nil) {
       clm_close(c);

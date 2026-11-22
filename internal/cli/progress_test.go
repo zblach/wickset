@@ -4,23 +4,23 @@ import (
 	"strings"
 	"testing"
 
-	"chainlock/chain"
-	"chainlock/internal/ops"
+	"wickset/internal/ops"
+	"wickset/wick"
 )
 
 // events is a solve of two steps, as ops reports one.
 func events() []ops.Event {
-	step := func(kind chain.EventKind, first int) ops.Event {
-		return ops.Event{Stage: "solving", Kind: ops.StepEvent, Step: chain.Event{Kind: kind, First: first, N: 1}}
+	step := func(kind wick.EventKind, first int) ops.Event {
+		return ops.Event{Stage: "solving", Kind: ops.StepEvent, Step: wick.Event{Kind: kind, First: first, N: 1}}
 	}
 	return []ops.Event{
 		{Stage: "solving", Kind: ops.StageBegan, Total: 2},
-		step(chain.Began, 0),
-		{Stage: "solving", Kind: ops.StepEvent, Step: chain.Event{Kind: chain.Partway, N: 1, Part: 1, OfParts: 2}},
-		step(chain.Finished, 0),
-		step(chain.Began, 1),
-		step(chain.Finished, 1),
-		step(chain.Idle, 0),
+		step(wick.Began, 0),
+		{Stage: "solving", Kind: ops.StepEvent, Step: wick.Event{Kind: wick.Partway, N: 1, Part: 1, OfParts: 2}},
+		step(wick.Finished, 0),
+		step(wick.Began, 1),
+		step(wick.Finished, 1),
+		step(wick.Idle, 0),
 	}
 }
 

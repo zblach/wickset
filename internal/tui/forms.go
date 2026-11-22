@@ -10,9 +10,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 
-	"chainlock/alg"
-	"chainlock/internal/ops"
-	"chainlock/internal/store"
+	"wickset/alg"
+	"wickset/internal/ops"
+	"wickset/internal/store"
 )
 
 // cores is what the forms say of the machine's cores: a variable, so tests
@@ -43,17 +43,17 @@ func newForm(act action, in *inputs, page int) *huh.Form {
 		Description("Optional. Where to write the decrypted file.")
 	keyOut := huh.NewInput().Key(pathField).Title("Key file").Value(&in.KeyOut).Validate(keyPath(false)).
 		Description("Optional. Saves a key that opens the file at once, with no wait.\n" +
-			"Keep it somewhere other than the lock.")
+			"Keep it somewhere other than the wick.")
 	algorithm := huh.NewSelect[alg.ID]().Title("Algorithm").Options(algOptions()...).Value(&in.Alg)
 	workers := huh.NewInput().Title("Workers").Value(&in.Workers).Validate(workersValidator).Placeholder("0").CharLimit(4).
 		Description(fmt.Sprintf("Steps computed at once. 0 or -1: one per core (%d here).", cores))
-	lock := "A .lock file (with its .payload next to it), or a .chainlock.tar."
+	wickFile := "A .wick file (with its .payload next to it), or a .wick.tar."
 
 	var fields []huh.Field
 	switch {
 	case act == actSeal && page == 0:
 		fields = []huh.Field{
-			file("File to lock", "The file to encrypt."),
+			file("File to seal", "The file to encrypt."),
 			huh.NewInput().Title("Delay").Value(&in.Steps).Validate(stepsValidator(0)).
 				Description("How long opening it should take, such as 30m, 8h, 3d or 2w.\n" +
 					"Or an exact number of steps."),
@@ -66,7 +66,7 @@ func newForm(act action, in *inputs, page int) *huh.Form {
 		fields = []huh.Field{
 			algorithm.Description(algReason(in)),
 			huh.NewSelect[store.Form]().Title("Save as").Value(&in.Form).Options(
-				huh.NewOption(fmt.Sprintf("two files     %s and %s", name+store.LockSuffix, name+store.PayloadSuffix), store.FormFile),
+				huh.NewOption(fmt.Sprintf("two files     %s and %s", name+store.WickSuffix, name+store.PayloadSuffix), store.FormFile),
 				huh.NewOption("one archive   "+name+store.ArchiveSuffix, store.FormArchive),
 				huh.NewOption("raw files     no damage check", store.FormRaw),
 			),
@@ -74,29 +74,29 @@ func newForm(act action, in *inputs, page int) *huh.Form {
 		}
 	case act == actOpen:
 		fields = []huh.Field{
-			file("Lock", lock),
+			file("Wick", wickFile),
 			out,
 			keyOut.Description("Optional. Saves the key, so you can open it again later with no wait."),
 		}
 	case act == actExtend:
 		fields = []huh.Field{
-			file("Lock", lock),
+			file("Wick", wickFile),
 			huh.NewInput().Title("Add").Value(&in.Steps).Validate(stepsValidator(1)).
 				Description("How much longer opening it should take, such as 2h or 1w.\n" +
 					"Or an exact number of steps."),
-			huh.NewInput().Key(pathField).Title("Save as").Value(&in.Out).Placeholder("update the lock in place").
-				Description("Optional. Where to write the longer lock."),
+			huh.NewInput().Key(pathField).Title("Save as").Value(&in.Out).Placeholder("update the wick in place").
+				Description("Optional. Where to write the longer wick."),
 			workers,
 		}
 	case act == actBypass:
 		fields = []huh.Field{
-			file("Encrypted file", "A .payload file, or its .lock or .chainlock.tar."),
+			file("Encrypted file", "A .payload file, or its .wick or .wick.tar."),
 			huh.NewInput().Key(pathField).Title("Key file").Value(&in.Key).Validate(keyPath(true)).
 				Description("The key saved earlier by Seal or Open."),
 			out,
 		}
 	case act == actInfo:
-		fields = []huh.Field{file("Lock", lock)}
+		fields = []huh.Field{file("Wick", wickFile)}
 	case act == actBench:
 		fields = []huh.Field{algorithm}
 	}
@@ -135,7 +135,7 @@ func algOptions() []huh.Option[alg.ID] {
 // algLabel is an algorithm's id, name and memory per step.
 func algLabel(a alg.Alg) string {
 	mem := "no real delay"
-	if _, ok := alg.SHA256ChainOf(a); ok {
+	if _, ok := alg.SHA256IterOf(a); ok {
 		mem = "no memory"
 	} else if a.MemBytes() > 0 {
 		mem = ops.Bytes(int64(a.MemBytes())) + " a step"
@@ -173,34 +173,34 @@ func helpText(act action, page int) string {
 		return `Delay
   A time, such as 30m, 8h, 3d, 2w, 6M or 1y, or several: "1w 3d", "2 weeks".
   Lowercase m is minutes and capital M months. A month is 30.44 days and
-  a year 365.25: a lock counts steps, not calendar dates.
+  a year 365.25: a wick counts steps, not calendar dates.
   Seal times one step on this machine and works out how many steps that
-  is. On faster hardware the lock opens sooner, so plan for the fastest
+  is. On faster hardware the wick burns sooner, so plan for the fastest
   machine that might try.
   Or a number N, for exactly N+1 steps of the algorithm chosen next.
 
 Sealing does as much work as the wait itself, shared across your cores:
-a 12h lock takes 3h or more to make on 4 cores.`
+a 12h wick takes 3h or more to make on 4 cores.`
 	case act == actSeal:
 		return fmt.Sprintf(`Algorithm
   0x01  Argon2id, 128 MiB, short step   memory-hard
   0x02  Argon2id, 128 MiB, long step
-  0x03  SHA-256 chain, short step       seals far faster on a GPU
-  0x04  SHA-256 chain, long step
+  0x03  iterated SHA-256, short step    seals far faster on a GPU
+  0x04  iterated SHA-256, long step
 
-  A long step means fewer steps for the same delay, so a smaller lock
+  A long step means fewer steps for the same delay, so a smaller wick
   file. Suggested: the long step from %v up; SHA-256 with the GPU,
   Argon2id without. Bench shows what a step takes here; README.md
   compares them.
 
 Save as
-  two files     the lock and the encrypted file; damage is caught early
+  two files     the wick and the encrypted file; damage is caught early
   one archive   the same two files, in one tar
-  raw files     the bare lock (SPEC.md), with no damage check
+  raw files     the bare wick (SPEC.md), with no damage check
 
 Workers   steps computed at once; each needs the algorithm's memory.
-Key file  opens the file at once with no wait, even after the lock is
-          made longer. Keep it apart from the lock.`, ops.FormatDelay(ops.LongDelay))
+Key file  opens the file at once with no wait, even after the wick is
+          made longer. Keep it apart from the wick.`, ops.FormatDelay(ops.LongDelay))
 	}
 	return ""
 }

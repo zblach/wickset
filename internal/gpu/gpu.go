@@ -1,6 +1,6 @@
-// Package gpu runs chainlock's step functions on a GPU, many independent
+// Package gpu runs wickset's step functions on a GPU, many independent
 // evaluations at a time, as sealing needs: Argon2id (its Device is an
-// argon2.Hasher, like internal/argon2's CPU) and SHA-256 chains. The hashing
+// argon2.Hasher, like internal/argon2's CPU) and iterated SHA-256. The hashing
 // is hashcat's (hashcat/, vendored unmodified); this package is only the
 // kernels' entry points and the host that loads them and moves inputs and
 // outputs, and its tests hold every result to x/crypto's and the standard
@@ -15,16 +15,16 @@ import (
 	"regexp"
 	"strings"
 
-	"chainlock/internal/argon2"
+	"wickset/internal/argon2"
 )
 
 // ErrUnavailable reports a build or machine with no supported GPU.
 var ErrUnavailable = errors.New("gpu: no supported GPU in this build")
 
 const (
-	chainDispatch = 1 << 13 // hashes a chain advances per dispatch: under a second, however many run
-	minChains     = 1 << 10 // the range ChainBatch searches
-	maxChains     = 1 << 20
+	iterDispatch = 1 << 13 // hashes a step advances per dispatch: under a second, however many run
+	minBatch     = 1 << 10 // the range IterBatch searches
+	maxBatch     = 1 << 20
 
 	syncPoints = 4
 	blockSize  = 1024 // bytes in an Argon2 block
@@ -54,7 +54,7 @@ func check(p argon2.Params, inputLen int) error {
 	return nil
 }
 
-// job is chainlock_job_t (kernel.cl) for count inputs of inputLen bytes:
+// job is wickset_job_t (kernel.cl) for count inputs of inputLen bytes:
 // hashcat's argon2_options_t, then the batch.
 func job(p argon2.Params, count, inputLen int) []byte {
 	b := blocks(p)

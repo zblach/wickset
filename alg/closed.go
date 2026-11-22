@@ -1,8 +1,8 @@
-//go:build !chainlock_testalgs
+//go:build !wickset_testalgs
 
 package alg
 
-// testAlgsBuilt reports whether this build has the chainlock_testalgs tag.
+// testAlgsBuilt reports whether this build has the wickset_testalgs tag.
 const testAlgsBuilt = false
 
 // testAlgs is empty: Lookup rejects all of 0xF0–0xFF, as SPEC.md §3 requires

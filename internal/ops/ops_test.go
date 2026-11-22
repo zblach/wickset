@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"chainlock/alg"
-	"chainlock/chain"
+	"wickset/alg"
+	"wickset/wick"
 )
 
 // fakeAlg is a free step, enough for code that only times or counts steps.
@@ -36,11 +36,11 @@ func script(events []Event) string {
 		switch {
 		case e.Kind == StageBegan:
 			lines = append(lines, fmt.Sprintf("%s of %d", e.Stage, e.Total))
-		case s.Kind == chain.Began:
+		case s.Kind == wick.Began:
 			lines = append(lines, fmt.Sprintf("began %d #%d+%d", s.Worker, s.First, s.N))
-		case s.Kind == chain.Finished:
+		case s.Kind == wick.Finished:
 			lines = append(lines, fmt.Sprintf("finished %d #%d+%d", s.Worker, s.First, s.N))
-		case s.Kind == chain.Idle:
+		case s.Kind == wick.Idle:
 			lines = append(lines, fmt.Sprintf("idle %d", s.Worker))
 		}
 	}

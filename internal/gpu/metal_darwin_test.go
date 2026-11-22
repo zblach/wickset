@@ -13,8 +13,8 @@ import (
 
 	xargon2 "golang.org/x/crypto/argon2"
 
-	"chainlock/alg"
-	"chainlock/internal/argon2"
+	"wickset/alg"
+	"wickset/internal/argon2"
 )
 
 var (
@@ -93,9 +93,9 @@ func TestMatchesXCrypto(t *testing.T) {
 	}
 }
 
-// TestChainlockAlgs: the GPU computes chainlock's own steps, H of each
+// TestRegisteredAlgs: the GPU computes wickset's own steps, H of each
 // registered Argon2id entry, exactly. 0x02 (192 passes) runs without -short.
-func TestChainlockAlgs(t *testing.T) {
+func TestRegisteredAlgs(t *testing.T) {
 	d := device(t)
 	for _, id := range []alg.ID{alg.Argon2idShort, alg.Argon2idLong} {
 		a, _ := alg.Lookup(id)
@@ -123,35 +123,35 @@ func TestChainlockAlgs(t *testing.T) {
 	}
 }
 
-// TestChain: the GPU's SHA-256 chains are the CPU's (alg.SHA256Chain.Run),
+// TestIterate: the GPU's iterated SHA-256 is the CPU's (alg.SHA256Iter.Run),
 // across dispatches and either side of a SIMD group, reporting after each
 // dispatch.
-func TestChain(t *testing.T) {
+func TestIterate(t *testing.T) {
 	d := device(t)
-	c := alg.SHA256Chain{Domain: []byte("chainlock/v1::test"), K: 2*chainDispatch + 7}
+	c := alg.SHA256Iter{Domain: []byte("wickset/v1::test"), K: 2*iterDispatch + 7}
 	for _, n := range []int{1, 31, 33} {
 		hs := make([][32]byte, n)
 		for i, x := range random(n, 32) {
 			hs[i] = c.Start(x)
 		}
 		var reports []uint64
-		got, err := d.Chain(t.Context(), hs, c.K-1, func(done uint64) { reports = append(reports, done) })
+		got, err := d.Iterate(t.Context(), hs, c.K-1, func(done uint64) { reports = append(reports, done) })
 		if err != nil {
 			t.Fatal(err)
 		}
 		for i, h := range hs {
 			if want, _ := c.Run(t.Context(), h, c.K-1, nil); got[i] != want {
-				t.Fatalf("chain %d of %d: GPU %x, CPU %x", i, n, got[i], want)
+				t.Fatalf("step %d of %d: GPU %x, CPU %x", i, n, got[i], want)
 			}
 		}
-		if fmt.Sprint(reports) != fmt.Sprint([]uint64{chainDispatch, 2 * chainDispatch, c.K - 1}) {
+		if fmt.Sprint(reports) != fmt.Sprint([]uint64{iterDispatch, 2 * iterDispatch, c.K - 1}) {
 			t.Fatalf("reports %v", reports)
 		}
 	}
-	if b := d.ChainBatch(); b < minChains || b > maxChains {
-		t.Fatalf("ChainBatch %d", b)
+	if b := d.IterBatch(); b < minBatch || b > maxBatch {
+		t.Fatalf("IterBatch %d", b)
 	} else {
-		t.Logf("%d chains at a time", b)
+		t.Logf("%d steps at a time", b)
 	}
 }
 
@@ -166,7 +166,7 @@ func TestCancel(t *testing.T) {
 	}
 }
 
-// BenchmarkSteps reports GPU throughput on chainlock's algorithms, in steps
+// BenchmarkSteps reports GPU throughput on wickset's algorithms, in steps
 // a second, for batches of the given sizes (and Batch). Run on its own:
 //
 //	go test -run '^$' -bench Steps -benchtime 1x ./internal/gpu

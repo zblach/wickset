@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"chainlock/alg"
-	"chainlock/chain"
+	"wickset/alg"
+	"wickset/wick"
 )
 
 // LongDelay is the delay from which a seal with no algorithm given uses the
@@ -17,7 +17,7 @@ import (
 const LongDelay = 24 * time.Hour
 
 // AlgFor is the algorithm a seal of the given delay uses when none is given:
-// on the GPU, a SHA-256 chain, which it seals far faster than it opens;
+// on the GPU, iterated SHA-256, which it seals far faster than it opens;
 // otherwise Argon2id, which keeps memory-hardness where the GPU's speed is
 // not on offer (README.md, "Choosing parameters").
 func AlgFor(delay time.Duration, gpu bool) alg.Alg {
@@ -36,16 +36,16 @@ func AlgFor(delay time.Duration, gpu bool) alg.Alg {
 // stepSamples is how many steps a timing takes; it reports the fastest.
 const stepSamples = 3
 
-// slice is the most of a SHA-256 chain a timing runs on one core, under a
-// second. A longer step is timed by its first slice hashes and scaled up,
-// as every hash of a chain costs the same.
+// slice is the most of an iterated SHA-256 step a timing runs on one core,
+// under a second. A longer step is timed by its first slice hashes and
+// scaled up, as every hash of a step costs the same.
 const slice = 1 << 24
 
 // cpuPart runs a's step on x on this goroutine, for a timing: whole, or for
-// a SHA-256 chain longer than slice, its first slice hashes. It returns the
+// an iterated SHA-256 step longer than slice, its first slice hashes. It returns the
 // share of a step it ran.
 func cpuPart(ctx context.Context, a alg.Alg, x []byte, partway alg.Partway) (float64, error) {
-	if c, ok := alg.SHA256ChainOf(a); ok && c.K > slice {
+	if c, ok := alg.SHA256IterOf(a); ok && c.K > slice {
 		_, err := c.Run(ctx, c.Start(x), slice-1, func(done uint64) { partway(done+1, slice) })
 		return float64(slice) / float64(c.K), err
 	}
@@ -60,14 +60,14 @@ func cpuPart(ctx context.Context, a alg.Alg, x []byte, partway alg.Partway) (flo
 // The fastest, not the median: a process's first step runs cold, up to ~20%
 // slower, and anything else on the machine only slows a step. A seal turns
 // this time into steps, and a slow estimate would make too few, opening the
-// lock early; the fastest errs, if at all, toward more.
+// wick early; the fastest errs, if at all, toward more.
 func (e *Env) stepTime(ctx context.Context, a alg.Alg, label string, b *batcher) (time.Duration, error) {
 	send := sender(e.stage(label, stepSamples, 0))
-	defer send(chain.Event{Kind: chain.Idle})
+	defer send(wick.Event{Kind: wick.Idle})
 	x := make([]byte, a.BlockSize())
 	fastest := time.Duration(math.MaxInt64)
 	for i := range stepSamples {
-		send(chain.Event{Kind: chain.Began, First: i, N: 1})
+		send(wick.Event{Kind: wick.Began, First: i, N: 1})
 		x[0] = byte(i)
 		t := time.Now()
 		var el time.Duration
@@ -83,31 +83,31 @@ func (e *Env) stepTime(ctx context.Context, a alg.Alg, label string, b *batcher)
 			return 0, err
 		}
 		fastest = min(fastest, time.Duration(float64(el)/share))
-		send(chain.Event{Kind: chain.Finished, First: i, N: 1})
+		send(wick.Event{Kind: wick.Finished, First: i, N: 1})
 	}
 	return fastest, nil
 }
 
 // sender is report, or with none, a report that does nothing.
-func sender(report chain.Report) chain.Report {
+func sender(report wick.Report) wick.Report {
 	if report == nil {
-		return func(chain.Event) {}
+		return func(wick.Event) {}
 	}
 	return report
 }
 
 // partway reports through send how far worker is through its n steps from
 // first.
-func partway(send chain.Report, worker, first, n int) alg.Partway {
+func partway(send wick.Report, worker, first, n int) alg.Partway {
 	return func(done, total uint64) {
-		send(chain.Event{Kind: chain.Partway, Worker: worker, First: first, N: n, Part: done, OfParts: total})
+		send(wick.Event{Kind: wick.Partway, Worker: worker, First: first, N: n, Part: done, OfParts: total})
 	}
 }
 
 // roundRate measures how fast a seal runs: n steps at once, as n workers or
 // one batch on b, timed together, in steps a second. Running side by side,
 // they share memory bandwidth, so this is slower than n single steps. A
-// long SHA-256 chain runs only part of each step, as stepTime's do.
+// long iterated SHA-256 step runs only in part, as stepTime's do.
 func (e *Env) roundRate(ctx context.Context, a alg.Alg, label string, n int, b *batcher) (float64, error) {
 	send := sender(e.stage(label, n, 0))
 	xs := make([][]byte, n)
@@ -118,13 +118,13 @@ func (e *Env) roundRate(ctx context.Context, a alg.Alg, label string, n int, b *
 	if b != nil {
 		// The round is one batch, begun and finished together, however much
 		// of each step it ran.
-		defer send(chain.Event{Kind: chain.Idle})
-		send(chain.Event{Kind: chain.Began, First: 0, N: n})
+		defer send(wick.Event{Kind: wick.Idle})
+		send(wick.Event{Kind: wick.Began, First: 0, N: n})
 		el, share, err := b.sample(ctx, a, xs)
 		if err != nil {
 			return 0, err
 		}
-		send(chain.Event{Kind: chain.Finished, First: 0, N: n})
+		send(wick.Event{Kind: wick.Finished, First: 0, N: n})
 		return float64(n) * share / el.Seconds(), nil
 	}
 	start := time.Now()
@@ -133,10 +133,10 @@ func (e *Env) roundRate(ctx context.Context, a alg.Alg, label string, n int, b *
 	shares := make([]float64, n)
 	for w := range n {
 		wg.Go(func() {
-			defer send(chain.Event{Kind: chain.Idle, Worker: w})
-			send(chain.Event{Kind: chain.Began, Worker: w, First: w, N: 1})
+			defer send(wick.Event{Kind: wick.Idle, Worker: w})
+			send(wick.Event{Kind: wick.Began, Worker: w, First: w, N: 1})
 			if shares[w], errs[w] = cpuPart(ctx, a, xs[w], partway(send, w, w, 1)); errs[w] == nil {
-				send(chain.Event{Kind: chain.Finished, Worker: w, First: w, N: 1})
+				send(wick.Event{Kind: wick.Finished, Worker: w, First: w, N: 1})
 			}
 		})
 	}
@@ -274,7 +274,7 @@ type BenchRow struct {
 	N     int
 	Solve time.Duration // N+1 steps, one after another
 	Seal  time.Duration // the same steps at the best round's pace
-	Size  int           // of the lock object
+	Size  int           // of the wick, in bytes
 }
 
 // Bench times a's steps as this Env runs them: one alone on one core, as
@@ -309,7 +309,7 @@ func (e *Env) Bench(ctx context.Context, a alg.Alg) (Bench, error) {
 		out.Rows = append(out.Rows, BenchRow{
 			N: n, Solve: time.Duration(n+1) * out.Step,
 			Seal: max(seal, out.Step), // never under one step, however many run at once
-			Size: chain.Size(a, n),
+			Size: wick.Size(a, n),
 		})
 	}
 	return out, nil

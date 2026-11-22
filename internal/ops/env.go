@@ -5,7 +5,7 @@ import (
 	"io"
 	"sync"
 
-	"chainlock/alg"
+	"wickset/alg"
 )
 
 // Env is how an operation reaches its front end. Every field may be nil.
@@ -50,8 +50,8 @@ func (n Note) String() string {
 	return n.Text
 }
 
-// TestBuild reports a binary built with -tags chainlock_testalgs, whose
-// private-use algorithms make locks with no real delay.
+// TestBuild reports a binary built with -tags wickset_testalgs, whose
+// private-use algorithms make wicks with no real delay.
 func TestBuild() bool {
 	for _, a := range alg.All() {
 		if a.ID().IsPrivateUse() {
@@ -62,7 +62,7 @@ func TestBuild() bool {
 }
 
 // TestBuildWarning is what a front end shows when TestBuild is true.
-const TestBuildWarning = "warning: test build (chainlock_testalgs): private-use algorithms are enabled and their locks have no real delay"
+const TestBuildWarning = "warning: test build (wickset_testalgs): private-use algorithms are enabled and their wicks have no real delay"
 
 func (e *Env) note(kind NoteKind, format string, args ...any) {
 	if e.Note != nil {

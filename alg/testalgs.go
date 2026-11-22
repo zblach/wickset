@@ -1,19 +1,19 @@
-//go:build chainlock_testalgs
+//go:build wickset_testalgs
 
 package alg
 
 // This file exists for end-to-end tests only:
 //
-//	go test -tags chainlock_testalgs ./...
+//	go test -tags wickset_testalgs ./...
 //
 // It defines cheap step functions in the private-use range, which SPEC.md §3
-// sets aside for private testing. Their steps take nanoseconds, so a lock made
+// sets aside for private testing. Their steps take nanoseconds, so a wick made
 // with one has no real delay. Never ship a binary built with this tag; the CLI
 // warns on every run when it is set.
 
 import "crypto/sha256"
 
-// testAlgsBuilt reports whether this build has the chainlock_testalgs tag.
+// testAlgsBuilt reports whether this build has the wickset_testalgs tag.
 const testAlgsBuilt = true
 
 // testAlgs holds the end-to-end algorithms. 0xF0 and 0xF1 stay empty: the

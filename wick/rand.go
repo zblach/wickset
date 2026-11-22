@@ -1,4 +1,4 @@
-package chain
+package wick
 
 import (
 	"crypto/rand"

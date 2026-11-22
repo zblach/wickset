@@ -8,9 +8,9 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"chainlock/internal/ops"
-	"chainlock/internal/store"
-	"chainlock/internal/tui"
+	"wickset/internal/ops"
+	"wickset/internal/store"
+	"wickset/internal/tui"
 )
 
 const delayHelp = `--delay is converted to steps using this machine's measured step time. The
@@ -18,13 +18,13 @@ real delay is hardware-relative: bench on the slowest legitimate solver, and
 expect an attacker to be faster.`
 
 type sealCmd struct {
-	File    string    `arg:"" type:"existingfile" help:"Plaintext to lock."`
+	File    string    `arg:"" type:"existingfile" help:"Plaintext to seal."`
 	Alg     algFlag   `help:"Algorithm id or name: ${algs}. Required with -n; with --delay, chosen by it if not given."`
 	N       *int      `name:"n" short:"n" xor:"steps" placeholder:"N" help:"N >= 0: the solver performs N+1 sequential steps."`
 	Delay   delayFlag `short:"d" xor:"steps" placeholder:"DELAY" help:"Instead of -n: a target delay on this machine, such as 8h, 3d, 2w, 6M (months; m is minutes), 1y or \"1w 3d\"."`
-	Raw     bool      `xor:"form" help:"Write the lock as the bare SPEC.md object, with no header or digest."`
-	Archive bool      `xor:"form,lockout,payloadout" help:"Write lock and payload together as FILE.chainlock.tar."`
-	Lock    string    `xor:"lockout" type:"path" placeholder:"PATH" help:"Lock output (default FILE.lock)."`
+	Raw     bool      `xor:"form" help:"Write the bare SPEC.md wick, with no header or digest."`
+	Archive bool      `xor:"form,wickout,payloadout" help:"Write wick and payload together as FILE.wick.tar."`
+	Wick    string    `xor:"wickout" type:"path" placeholder:"PATH" help:"Wick output (default FILE.wick)."`
 	Payload string    `xor:"payloadout" type:"path" placeholder:"PATH" help:"Payload output (default FILE.payload)."`
 	KeyOut  string    `placeholder:"PATH" help:"Also save the key, which opens the payload without solving ('-' for stdout)."`
 	workersFlag
@@ -32,14 +32,14 @@ type sealCmd struct {
 
 func (*sealCmd) Help() string {
 	return "N is SPEC.md's N: the solver performs N+1 sequential steps (-n 0 is one step).\n\n" +
-		"The lock file carries a digest and the payload names its lock, so damage or a\n" +
-		"mixed-up pair is caught before solving (CONTAINER.md).\n\n" +
-		"--key-out saves the lock's secret, so its holder can open the payload at once\n" +
-		"with bypass, however far the lock is later extended. It is the whole delay in\n" +
-		"one line: keep it apart from the lock and payload.\n\n" +
-		"Each family has a short step and a long one (a smaller lock for the same\n" +
-		"delay): 0x01/0x02 Argon2id, memory-hard; 0x03/0x04 SHA-256 chains, which\n" +
-		"seal far faster on a GPU. README.md compares them. Without --alg, --delay\n" +
+		"The wick file carries a digest and the payload names its wick, so damage or a\n" +
+		"mixed-up pair is caught before burning (CONTAINER.md).\n\n" +
+		"--key-out saves the wick's secret, so its holder can open the payload at once\n" +
+		"with bypass, however far the wick is later extended. It is the whole delay in\n" +
+		"one line: keep it apart from the wick and payload.\n\n" +
+		"Each family has a short step and a long one (a smaller wick for the same\n" +
+		"delay): 0x01/0x02 Argon2id, memory-hard; 0x03/0x04 iterated SHA-256, which\n" +
+		"seals far faster on a GPU. README.md compares them. Without --alg, --delay\n" +
 		"chooses the short step below a day and the long one from a day up: SHA-256\n" +
 		"with --gpu, Argon2id without. -n counts steps of one algorithm, so it\n" +
 		"needs --alg.\n\n" + delayHelp
@@ -61,7 +61,7 @@ func (c *sealCmd) Validate() error {
 func (c *sealCmd) Run(ctx context.Context, env *ops.Env) error {
 	a := ops.SealArgs{
 		File: c.File, Alg: c.Alg.Alg, Delay: time.Duration(c.Delay), Form: store.FormFile,
-		Lock: c.Lock, Payload: c.Payload, KeyOut: c.KeyOut, Workers: c.Workers,
+		Wick: c.Wick, Payload: c.Payload, KeyOut: c.KeyOut, Workers: c.Workers,
 	}
 	if c.N != nil {
 		a.N = *c.N
@@ -76,7 +76,7 @@ func (c *sealCmd) Run(ctx context.Context, env *ops.Env) error {
 }
 
 type openCmd struct {
-	File    string `arg:"" name:"lock" type:"existingfile" help:"FILE.lock, or FILE.chainlock.tar with its payload inside."`
+	File    string `arg:"" name:"wick" type:"existingfile" help:"FILE.wick, or FILE.wick.tar with its payload inside."`
 	Payload string `type:"existingfile" placeholder:"PATH" help:"Payload to decrypt (default FILE.payload; not with an archive)."`
 	Out     string `type:"path" placeholder:"PATH" help:"Plaintext output, replaced if present (default FILE, which must not exist)."`
 	KeyOut  string `placeholder:"PATH" help:"Also save the key that solving recovers, to reopen later with bypass ('-' for stdout)."`
@@ -87,15 +87,15 @@ func (c *openCmd) Run(ctx context.Context, env *ops.Env) error {
 }
 
 type bypassCmd struct {
-	File    string `arg:"" name:"file" type:"existingfile" help:"FILE.payload, or a lock (FILE.lock, FILE.chainlock.tar) to take the payload from."`
+	File    string `arg:"" name:"file" type:"existingfile" help:"FILE.payload, or a wick (FILE.wick, FILE.wick.tar) to take the payload from."`
 	Key     string `required:"" placeholder:"PATH" help:"Key file from seal or open --key-out; '-' reads standard input."`
-	Payload string `type:"existingfile" placeholder:"PATH" help:"Payload, when FILE is a lock (default FILE.payload; not with an archive)."`
+	Payload string `type:"existingfile" placeholder:"PATH" help:"Payload, when FILE is a wick (default FILE.payload; not with an archive)."`
 	Out     string `type:"path" placeholder:"PATH" help:"Plaintext output, replaced if present (default FILE, which must not exist)."`
 }
 
 func (*bypassCmd) Help() string {
 	return "Decrypts with a key saved by seal --key-out or open --key-out, without solving,\n" +
-		"however far the lock has since been extended. Give the payload alone, or a lock\n" +
+		"however far the wick has since been extended. Give the payload alone, or a wick\n" +
 		"(whose pairing with the payload is then checked too).\n\n" +
 		"The key is read from a file or standard input, never from the command line,\n" +
 		"where it would land in shell history and process listings."
@@ -106,18 +106,18 @@ func (c *bypassCmd) Run(env *ops.Env) error {
 }
 
 type extendCmd struct {
-	File  string    `arg:"" name:"lock" type:"existingfile" help:"Lock to extend, in any form; it is written back in the same form."`
+	File  string    `arg:"" name:"wick" type:"existingfile" help:"Wick to extend, in any form; it is written back in the same form."`
 	Add   int       `short:"a" xor:"steps" placeholder:"K" help:"K >= 1 sequential steps to add."`
 	Delay delayFlag `short:"d" xor:"steps" placeholder:"DELAY" help:"Instead of --add: delay to add on this machine, as for seal: 2h, 1w, 1M."`
-	Out   string    `type:"path" placeholder:"PATH" help:"Write the extended lock here, a new file, instead of replacing FILE.lock."`
+	Out   string    `type:"path" placeholder:"PATH" help:"Write the extended wick here, a new file, instead of replacing FILE.wick."`
 	workersFlag
 }
 
 func (*extendCmd) Help() string {
-	return "--add K adds K steps, so N becomes N+K. Anyone holding a lock can extend it\n" +
-		"before passing it on, and those downstream must solve the longer chain. Anyone\n" +
+	return "--add K adds K steps, so N becomes N+K. Anyone holding a wick can extend it\n" +
+		"before passing it on, and those downstream must burn the longer wick. Anyone\n" +
 		"who kept the shorter version can still open that in its original steps.\n\n" +
-		"Replacing FILE.lock in place does not scrub the shorter version from disk,\n" +
+		"Replacing FILE.wick in place does not scrub the shorter version from disk,\n" +
 		"snapshots, backups or synced folders. Keep it out of downstream reach.\n\n" + delayHelp
 }
 
@@ -134,17 +134,17 @@ func (c *extendCmd) Run(ctx context.Context, env *ops.Env) error {
 }
 
 type infoCmd struct {
-	File string `arg:"" name:"lock" type:"existingfile" help:"Lock to describe, in any form."`
+	File string `arg:"" name:"wick" type:"existingfile" help:"Wick to describe, in any form."`
 }
 
-// Run describes the lock and checks its payload, as open would before
-// solving. A payload that fails the check fails the command.
+// Run describes the wick and checks its payload, as open would before
+// burning. A payload that fails the check fails the command.
 func (c *infoCmd) Run() error {
 	in, err := ops.Describe(c.File)
 	if err != nil {
 		return err
 	}
-	payload := "pairs with this lock, digest ok"
+	payload := "pairs with this wick, digest ok"
 	switch {
 	case in.PayloadMissing():
 		payload = "not found"
@@ -154,7 +154,7 @@ func (c *infoCmd) Run() error {
 	lipgloss.Println(tui.Columns(tui.KeyColumn).Rows(
 		[]string{"alg", fmt.Sprintf("%v (B = %d)", in.Alg.ID(), in.Alg.BlockSize())},
 		[]string{"N", fmt.Sprintf("%d (%d sequential steps)", in.N, in.N+1)},
-		[]string{"object", ops.Bytes(int64(in.Size))},
+		[]string{"wick", ops.Bytes(int64(in.Size))},
 		[]string{"form", in.Form.String()},
 		[]string{"payload", in.PayloadWhere + ": " + payload},
 	))
@@ -180,7 +180,7 @@ func (c *benchCmd) Run(ctx context.Context, env *ops.Env) error {
 }
 
 type tuiCmd struct {
-	File string `arg:"" optional:"" help:"File to start with: a plaintext to seal, or a lock or payload to open."`
+	File string `arg:"" optional:"" help:"File to start with: a plaintext to seal, or a wick or payload to open."`
 }
 
 func (c *tuiCmd) Run(ctx context.Context, env *ops.Env) error {

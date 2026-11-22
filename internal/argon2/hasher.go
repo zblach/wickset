@@ -1,12 +1,12 @@
 package argon2
 
-// This file is chainlock's, not x/crypto's: the API every Argon2id backend
+// This file is wickset's, not x/crypto's: the API every Argon2id backend
 // implements, the CPU (this package) and the GPU (internal/gpu).
 
 import "context"
 
 // Params is one Argon2id parameter set with one lane (threads = 1), as every
-// chainlock algorithm uses: a step that could spread over cores would let a
+// wickset algorithm uses: a step that could spread over cores would let a
 // solver do the same.
 type Params struct {
 	Salt      []byte
@@ -32,7 +32,7 @@ type Hasher interface {
 
 // CPU is the Hasher of this package: one evaluation at a time, on the
 // calling goroutine. Running several at once is the caller's to arrange, as
-// chain's workers do.
+// wick's workers do.
 type CPU struct{}
 
 func (CPU) Batch(Params) int { return 1 }

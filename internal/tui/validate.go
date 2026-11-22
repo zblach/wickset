@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"chainlock/internal/ops"
+	"wickset/internal/ops"
 )
 
 // The form fields' validators, and the parsing they share with args.
@@ -38,7 +38,7 @@ func keyPath(required bool) func(string) error {
 			return errors.New("'-' is not available here; give a path")
 		case s == "" && required:
 			return errors.New("required")
-		case strings.HasPrefix(s, "chainlock-key-"):
+		case strings.HasPrefix(s, "wickset-key-"):
 			return errors.New("that is a key, not a path to one; clear it and save the key to a file")
 		case required:
 			return existingFile(s)

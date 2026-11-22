@@ -1,19 +1,19 @@
-// chainlock's iterated SHA-256 on hashcat's (hashcat/inc_hash_sha256.cl):
-// many independent chains, one thread each. A chain's state is a 32-byte
+// wickset's iterated SHA-256 on hashcat's (hashcat/inc_hash_sha256.cl):
+// many independent steps, one thread each. A step's state is a 32-byte
 // digest as 8 big-endian words; each iteration replaces it with SHA-256 of
 // itself, one padded block. A dispatch runs job->iters iterations, so the host
 // can report progress and stop between dispatches.
 
 #include "inc_hash_sha256.cl"
 
-typedef struct chainlock_sha_job
+typedef struct wickset_sha_job
 {
-  u32 count; // chains in the batch
+  u32 count; // steps in the batch
   u32 iters; // iterations this dispatch
 
-} chainlock_sha_job_t;
+} wickset_sha_job_t;
 
-KERNEL_FQ void chainlock_sha256_iter (CONSTANT_AS const chainlock_sha_job_t *job, GLOBAL_AS u32 *state CHAINLOCK_THREAD_PARAMS)
+KERNEL_FQ void wickset_sha256_iter (CONSTANT_AS const wickset_sha_job_t *job, GLOBAL_AS u32 *state WICKSET_THREAD_PARAMS)
 {
   const u64 gid = get_global_id (0);
 

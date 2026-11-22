@@ -1,4 +1,4 @@
-package chain
+package wick
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"chainlock/alg"
+	"wickset/alg"
 )
 
 // fakeBatcher computes batches from testAlg32, failing its fail'th batch if

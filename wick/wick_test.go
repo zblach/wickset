@@ -1,4 +1,4 @@
-package chain
+package wick
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"chainlock/alg"
+	"wickset/alg"
 )
 
 var update = flag.Bool("update", false, "rewrite golden vectors in testdata/")
@@ -31,7 +31,7 @@ var (
 	testAlgs          = []alg.Alg{testAlg32, testAlg16}
 )
 
-// testAlgsBuilt reports a build with -tags chainlock_testalgs, which
+// testAlgsBuilt reports a build with -tags wickset_testalgs, which
 // registers 0xFE and 0xFF.
 var _, testAlgsBuilt = alg.Lookup(0xFF)
 
@@ -136,7 +136,7 @@ func TestRoundTrip(t *testing.T) {
 // TestNew: New draws S itself, and the object it returns hides that S.
 func TestNew(t *testing.T) {
 	if !testAlgsBuilt {
-		t.Skip("needs a registered cheap algorithm: -tags chainlock_testalgs")
+		t.Skip("needs a registered cheap algorithm: -tags wickset_testalgs")
 	}
 	obj, key, err := New(t.Context(), 0xFE, 3, Opts{})
 	if err != nil {
@@ -189,7 +189,7 @@ func TestCancelMidStep(t *testing.T) {
 }
 
 // TestEvents: workers report every evaluation's start and finish, one at a
-// time, by Event's rules; a SHA-256 chain step reports partway too.
+// time, by Event's rules; an iterated SHA-256 step reports partway too.
 func TestEvents(t *testing.T) {
 	a := testAlg32
 	xs, _ := randBlocks(20, a.BlockSize())
@@ -206,7 +206,7 @@ func TestEvents(t *testing.T) {
 		}
 	}
 
-	// A real chain step reports partway, in hashes, as it goes.
+	// A real SHA-256 step reports partway, in hashes, as it goes.
 	sha, _ := alg.Lookup(alg.SHA256Short)
 	events = nil
 	if _, err := computeOutputs(t.Context(), sha, xs[:1], Opts{Report: func(e Event) { events = append(events, e) }}); err != nil {
@@ -214,7 +214,7 @@ func TestEvents(t *testing.T) {
 	}
 	checkEvents(t, events, 1)
 	last := events[len(events)-3] // ... Partway, Finished, Idle
-	if c, _ := alg.SHA256ChainOf(sha); last.Kind != Partway || last.Part != c.K || last.OfParts != c.K {
+	if c, _ := alg.SHA256IterOf(sha); last.Kind != Partway || last.Part != c.K || last.OfParts != c.K {
 		t.Fatalf("last partway %+v", last)
 	}
 }
@@ -343,7 +343,7 @@ func TestParseRejects(t *testing.T) {
 	good := func(id byte, blocks int) []byte {
 		return append([]byte{id}, make([]byte, blocks*32)...)
 	}
-	// Under -tags chainlock_testalgs, 0xFF is a registered end-to-end
+	// Under -tags wickset_testalgs, 0xFF is a registered end-to-end
 	// algorithm (B = 16), so good(0xFF, 3) is a valid 6-block object. 0xF0 is
 	// rejected in every build.
 	var wantFF error = alg.ErrUnknown
@@ -466,7 +466,7 @@ func vectorPath(id alg.ID, n int) string {
 
 // memoAlg caches H by input, so a test can evaluate each real step once and
 // share it between build and solve. Steps are deterministic, so this loses
-// nothing: a wrong chain value in solve misses the cache and still yields a
+// nothing: a wrong value I[j] in solve misses the cache and still yields a
 // wrong S.
 type memoAlg struct {
 	alg.Alg

@@ -1,5 +1,5 @@
 //go:build !race
 
-package chain
+package wick
 
 const raceEnabled = false

@@ -1,9 +1,9 @@
-//go:build chainlock_testalgs
+//go:build wickset_testalgs
 
 // Tests of the TUI's model, driven through Update and View directly against
 // the cheap private-use algorithms:
 //
-//	go test -tags chainlock_testalgs ./internal/tui
+//	go test -tags wickset_testalgs ./internal/tui
 package tui
 
 import (
@@ -19,10 +19,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"chainlock/alg"
-	"chainlock/chain"
-	"chainlock/internal/ops"
-	"chainlock/internal/store"
+	"wickset/alg"
+	"wickset/internal/ops"
+	"wickset/internal/store"
+	"wickset/wick"
 )
 
 func press(m *model, k tea.KeyPressMsg) {
@@ -73,7 +73,7 @@ func TestSealOpenBypass(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(v, key.Encode()[len("chainlock-key-v1:"):]) {
+	if strings.Contains(v, key.Encode()[len("wickset-key-v1:"):]) {
 		t.Fatalf("the key appears on screen:\n%s", v)
 	}
 
@@ -83,18 +83,18 @@ func TestSealOpenBypass(t *testing.T) {
 	}
 
 	out := filepath.Join(dir, "opened")
-	v = submit(t, m, actOpen, &inputs{File: plain + ".chainlock.tar", Out: out})
+	v = submit(t, m, actOpen, &inputs{File: plain + store.ArchiveSuffix, Out: out})
 	if got, _ := os.ReadFile(out); m.res.err != nil || string(got) != "attack at dawn" {
 		t.Fatalf("open: %v, wrote %q\n%s", m.res.err, got, v)
 	}
 
 	out = filepath.Join(dir, "bypassed")
-	submit(t, m, actBypass, &inputs{File: plain + ".chainlock.tar", Key: keyFile, Out: out})
+	submit(t, m, actBypass, &inputs{File: plain + store.ArchiveSuffix, Key: keyFile, Out: out})
 	if got, _ := os.ReadFile(out); m.res.err != nil || string(got) != "attack at dawn" {
 		t.Fatalf("bypass: %v, wrote %q", m.res.err, got)
 	}
 
-	submit(t, m, actInfo, &inputs{File: plain + ".chainlock.tar"})
+	submit(t, m, actInfo, &inputs{File: plain + store.ArchiveSuffix})
 	if in, ok := m.res.value.(*ops.Info); m.res.err != nil || !ok || in.N != 4 || in.PayloadErr != nil || in.Form != store.FormArchive {
 		t.Fatalf("info: %v, %+v", m.res.err, m.res.value)
 	}
@@ -109,17 +109,17 @@ func TestRefusals(t *testing.T) {
 	submit(t, m, actSeal, &inputs{File: plain, Alg: 0xFE, Steps: "1", Form: store.FormFile})
 
 	// The default output, plain, exists, and is left as it was.
-	submit(t, m, actOpen, &inputs{File: plain + ".lock"})
+	submit(t, m, actOpen, &inputs{File: plain + store.WickSuffix})
 	if got, _ := os.ReadFile(plain); m.res.err == nil || string(got) != "x" {
 		t.Fatalf("open over an existing file: %v, which now holds %q", m.res.err, got)
 	}
 	// Standard streams belong to the TUI: refused before anything is written.
 	out := filepath.Join(dir, "o")
-	submit(t, m, actOpen, &inputs{File: plain + ".lock", Out: out, KeyOut: "-"})
+	submit(t, m, actOpen, &inputs{File: plain + store.WickSuffix, Out: out, KeyOut: "-"})
 	if _, err := os.Stat(out); m.res.err == nil || err == nil {
 		t.Fatalf("key to '-': %v, and the output was written", m.res.err)
 	}
-	for _, s := range []string{"-", "chainlock-key-v1:AAAA", ""} {
+	for _, s := range []string{"-", "wickset-key-v1:AAAA", ""} {
 		if keyPath(true)(s) == nil {
 			t.Errorf("key path %q accepted", s)
 		}
@@ -232,8 +232,8 @@ func stage(s float64, label string, total int) ops.Event {
 	return ops.Event{At: t0.Add(secs(s)), Stage: label, Kind: ops.StageBegan, Total: total}
 }
 
-func step(s float64, kind chain.EventKind, worker, first, n int) ops.Event {
-	return ops.Event{At: t0.Add(secs(s)), Kind: ops.StepEvent, Step: chain.Event{Kind: kind, Worker: worker, First: first, N: n}}
+func step(s float64, kind wick.EventKind, worker, first, n int) ops.Event {
+	return ops.Event{At: t0.Add(secs(s)), Kind: ops.StepEvent, Step: wick.Event{Kind: kind, Worker: worker, First: first, N: n}}
 }
 
 func secs(s float64) time.Duration { return time.Duration(s * float64(time.Second)) }
@@ -256,23 +256,23 @@ func TestFineProgress(t *testing.T) {
 	}
 	j := scripted(
 		stage(0, "solving", 1000),
-		step(0, chain.Began, 0, 0, 1),
-		step(2, chain.Finished, 0, 0, 1),
-		step(2, chain.Began, 0, 1, 1),
+		step(0, wick.Began, 0, 0, 1),
+		step(2, wick.Finished, 0, 0, 1),
+		step(2, wick.Began, 0, 1, 1),
 	)
 	s := j.snapshot()
 	if s.Done != 1 || s.StepAvg != 2*time.Second || s.Rate != 0.5 || s.Workers[0].First != 1 {
 		t.Fatalf("one step in 2 s: %+v", s.Run)
 	}
 	estimated := flightView(s.Run, t0.Add(3*time.Second))
-	partway := step(4, chain.Partway, 0, 1, 1)
+	partway := step(4, wick.Partway, 0, 1, 1)
 	partway.Step.Part, partway.Step.OfParts = 1, 4
 	j.event(partway)
 	reported := flightView(j.snapshot().Run, t0.Add(4*time.Second))
 	if estimated == "" || reported == "" || estimated == reported {
 		t.Fatalf("in flight, estimated %q, then reported %q", estimated, reported)
 	}
-	if flightView(scripted(stage(0, "sealing", 10), step(0, chain.Began, 0, 0, 1), step(0, chain.Began, 1, 1, 1)).snapshot().Run, t0) != "" {
+	if flightView(scripted(stage(0, "sealing", 10), step(0, wick.Began, 0, 0, 1), step(0, wick.Began, 1, 1, 1)).snapshot().Run, t0) != "" {
 		t.Fatal("many workers: a line in flight, not the bar alone")
 	}
 }
@@ -282,18 +282,18 @@ func TestFineProgress(t *testing.T) {
 func TestWorkBar(t *testing.T) {
 	j := scripted(
 		stage(0, "sealing", 5),
-		step(0, chain.Began, 0, 0, 1),
-		step(0, chain.Began, 1, 1, 1),
-		step(0, chain.Began, 2, 2, 1),
+		step(0, wick.Began, 0, 0, 1),
+		step(0, wick.Began, 1, 1, 1),
+		step(0, wick.Began, 2, 2, 1),
 	)
 	if got := fmt.Sprint(workCells(5, j.snapshot().Run)); got != fmt.Sprint([]int{cellBusy, cellBusy, cellBusy, cellPending, cellPending}) {
 		t.Errorf("before any step ends, cells %s", got)
 	}
 	for _, e := range []ops.Event{
-		step(1, chain.Finished, 0, 0, 1),
-		step(1, chain.Began, 0, 3, 1),
-		step(1, chain.Finished, 1, 1, 1),
-		step(1, chain.Idle, 1, 0, 0),
+		step(1, wick.Finished, 0, 0, 1),
+		step(1, wick.Began, 0, 3, 1),
+		step(1, wick.Finished, 1, 1, 1),
+		step(1, wick.Idle, 1, 0, 0),
 	} {
 		j.event(e)
 	}

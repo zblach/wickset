@@ -14,7 +14,7 @@ import (
 //
 // Delays are written as systemd writes time spans (systemd.time(7)): terms
 // that add up, such as 90s, 8h, 3d, 2w, 6M, 1y, "1w 3d" or "2 weeks". Case
-// matters only where systemd's does: m is a minute, M a month. A lock counts
+// matters only where systemd's does: m is a minute, M a month. A wick counts
 // steps, not dates, so a month and a year are fixed spans, systemd's own:
 // 30.44 and 365.25 days.
 const (
@@ -52,7 +52,7 @@ var errDelay = errors.New("a delay is a number and a unit, such as 90s, 30min, 8
 
 // ParseDelay reads a delay as systemd.time(7) writes a time span, except
 // that a number needs a unit: systemd reads a bare one as seconds, but in
-// chainlock a bare number is a step count. It must be positive.
+// wickset a bare number is a step count. It must be positive.
 func ParseDelay(s string) (time.Duration, error) {
 	rest := strings.TrimSpace(s)
 	if rest == "" {

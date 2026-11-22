@@ -28,13 +28,13 @@ func tree(t *testing.T, names ...string) string {
 }
 
 func TestComplete(t *testing.T) {
-	d := tree(t, "notes.txt", "notes.txt.lock", "docs/", ".hidden", "xé.txt", "xè.txt")
+	d := tree(t, "notes.txt", "notes.txt.wick", "docs/", ".hidden", "xé.txt", "xè.txt")
 	for _, c := range []struct {
 		typed, add string
 		matches    []string
 	}{
 		{d + "no", "tes.txt", nil},                                     // to the common prefix
-		{d + "notes.txt", "", []string{"notes.txt", "notes.txt.lock"}}, // nothing to add: list
+		{d + "notes.txt", "", []string{"notes.txt", "notes.txt.wick"}}, // nothing to add: list
 		{d + "do", "cs/", nil},                                         // a directory, ready to go on
 		{d + ".h", "idden", nil},                                       // hidden, when asked for
 		{d + "x", "", []string{"xè.txt", "xé.txt"}},                    // é and è share a byte, not a character
@@ -54,10 +54,10 @@ func TestComplete(t *testing.T) {
 // TestTabCompletes: in a path field, tab completes, then lists what it
 // cannot choose between, and only then moves on.
 func TestTabCompletes(t *testing.T) {
-	d := tree(t, "notes.txt", "notes.txt.lock")
+	d := tree(t, "notes.txt", "notes.txt.wick")
 	m := newModel(t.Context(), "")
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
-	m.pick(actOpen) // Lock, then Save as
+	m.pick(actOpen) // Wick, then Save as
 	if hint := ansi.Strip(newHelp().ShortHelpView([]key.Binding{formKeys.Complete})); !strings.Contains(ansi.Strip(m.helpLine()), hint) {
 		t.Fatalf("no completion hint %q in a path field: %q", hint, m.helpLine())
 	}
@@ -72,13 +72,13 @@ func TestTabCompletes(t *testing.T) {
 		t.Fatalf("after tab: %q, want the common prefix %q", got, d+"notes.txt")
 	}
 	m.Update(tab)
-	if !slices.Equal(m.matches, []string{"notes.txt", "notes.txt.lock"}) {
+	if !slices.Equal(m.matches, []string{"notes.txt", "notes.txt.wick"}) {
 		t.Fatalf("second tab listed %q", m.matches)
 	}
 	if value() != d+"notes.txt" {
 		t.Fatal("listing changed the field")
 	}
-	// The third tab moves on, to Save as, keeping what Lock holds.
+	// The third tab moves on, to Save as, keeping what Wick holds.
 	_, cmd := m.Update(tab)
 	for _, msg := range run(cmd) {
 		m.Update(msg)
@@ -87,6 +87,6 @@ func TestTabCompletes(t *testing.T) {
 		t.Fatalf("after the third tab: focus %T holding %q, matches %v", f, value(), m.matches)
 	}
 	if m.in.File != d+"notes.txt" {
-		t.Fatalf("Lock now %q", m.in.File)
+		t.Fatalf("Wick now %q", m.in.File)
 	}
 }

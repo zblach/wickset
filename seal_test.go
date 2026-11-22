@@ -1,4 +1,4 @@
-package chainlock
+package wickset
 
 import (
 	"bytes"
@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"chainlock/alg"
-	"chainlock/chain"
-	"chainlock/format"
+	"wickset/alg"
+	"wickset/format"
+	"wickset/wick"
 )
 
 // countingAlg wraps an Alg and counts evaluations of H.
@@ -20,18 +20,18 @@ type countingAlg struct {
 func (c *countingAlg) H(x []byte) []byte { c.steps++; return c.Alg.H(x) }
 
 // TestRealAlgSmoke runs the whole path on 0x01: seal at N = 0, extend by one,
-// open, and open again with the key. Opening only the extended lock still
-// proves the seal (the chain ends at the same S), at three real evaluations
+// open, and open again with the key. Opening only the extended wick still
+// proves the seal (it burns down to the same S), at three real evaluations
 // of H instead of five.
 func TestRealAlgSmoke(t *testing.T) {
 	t.Parallel()
 	start := time.Now()
 	pt := []byte("hello")
-	lock, payload, key, err := Seal(t.Context(), pt, SealOpts{Alg: alg.Argon2idShort, N: 0})
+	raw, payload, key, err := Seal(t.Context(), pt, SealOpts{Alg: alg.Argon2idShort, N: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ext, err := chain.Extend(t.Context(), lock, 1, chain.Opts{})
+	ext, err := wick.Extend(t.Context(), raw, 1, wick.Opts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestRealAlgSmoke(t *testing.T) {
 		t.Fatalf("after extend: %q %v", got, err)
 	}
 	if !bytes.Equal(solved, key) {
-		t.Fatal("solving the extended lock recovered a different key than Seal returned")
+		t.Fatal("solving the extended wick recovered a different key than Seal returned")
 	}
 	if got, err := format.OpenPayload(key, payload); err != nil || !bytes.Equal(got, pt) {
 		t.Fatalf("with key: %q %v", got, err)
@@ -55,7 +55,7 @@ func TestRealAlgSmoke(t *testing.T) {
 // any evaluation of H, so a mistake never costs the delay.
 func TestOpenChecksFirst(t *testing.T) {
 	t.Parallel()
-	lock, payload, _, err := Seal(t.Context(), []byte("x"), SealOpts{Alg: alg.Argon2idShort, N: 0})
+	raw, payload, _, err := Seal(t.Context(), []byte("x"), SealOpts{Alg: alg.Argon2idShort, N: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,15 +66,15 @@ func TestOpenChecksFirst(t *testing.T) {
 	damaged := append([]byte(nil), payload...)
 	damaged[len(damaged)-1] ^= 1
 	for _, c := range []struct {
-		name          string
-		lock, payload []byte
-		want          error
+		name         string
+		raw, payload []byte
+		want         error
 	}{
-		{"other lock", other, payload, format.ErrMismatch},
-		{"damaged payload", lock, damaged, format.ErrCorrupt},
-		{"lock file as payload", lock, format.EncodeLockFile(lock), format.ErrFormat},
+		{"other wick", other, payload, format.ErrMismatch},
+		{"damaged payload", raw, damaged, format.ErrCorrupt},
+		{"wick file as payload", raw, format.EncodeWickFile(raw), format.ErrFormat},
 	} {
-		o, err := chain.Parse(c.lock)
+		o, err := wick.Parse(c.raw)
 		if err != nil {
 			t.Fatal(err)
 		}

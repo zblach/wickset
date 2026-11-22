@@ -5,20 +5,20 @@ import (
 	"path/filepath"
 	"testing"
 
-	"chainlock/alg"
-	"chainlock/format"
+	"wickset/alg"
+	"wickset/format"
 )
 
-// zeroObject is a well-formed 0x01 object with N = 1. Loading it evaluates no
+// zeroObject is a well-formed 0x01 wick with N = 1. Loading it evaluates no
 // step, so it costs nothing.
 func zeroObject() []byte {
 	return append([]byte{byte(alg.Argon2idShort)}, make([]byte, 3*32)...)
 }
 
 func TestArchiveRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "x.chainlock.tar")
+	path := filepath.Join(t.TempDir(), "x"+ArchiveSuffix)
 	obj, payload := zeroObject(), []byte("payload bytes")
-	if err := writeArchive(path, "x", format.EncodeLockFile(obj), payload); err != nil {
+	if err := writeArchive(path, "x", format.EncodeWickFile(obj), payload); err != nil {
 		t.Fatal(err)
 	}
 	l, err := Load(path)
@@ -30,10 +30,10 @@ func TestArchiveRoundTrip(t *testing.T) {
 	}
 }
 
-// TestArchiveRejectsRawLock: an archive's lock member must be a lock file
-// (CONTAINER.md §4), not a raw object without a digest.
-func TestArchiveRejectsRawLock(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "x.chainlock.tar")
+// TestArchiveRejectsRawWick: an archive's wick member must be a wick file
+// (CONTAINER.md §4), not a raw wick without a digest.
+func TestArchiveRejectsRawWick(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "x"+ArchiveSuffix)
 	if err := writeArchive(path, "x", zeroObject(), []byte("p")); err != nil {
 		t.Fatal(err)
 	}

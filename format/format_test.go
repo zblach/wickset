@@ -6,24 +6,24 @@ import (
 	"errors"
 	"testing"
 
-	"chainlock/alg"
-	"chainlock/chain"
+	"wickset/alg"
+	"wickset/wick"
 )
 
-// object is a lock object of 0x01 with N+1 = blocks-1 steps, block 0 filled
-// with seed. Nothing here evaluates H, so no real chain is needed: the files
-// bind to an object's ALG_ID and block 0, and carry it whole.
-func object(t *testing.T, seed byte, blocks int) (raw []byte, o *chain.Object) {
+// object is a raw wick of 0x01 with N+1 = blocks-1 steps, block 0 filled
+// with seed. Nothing here evaluates H, so no real wick is needed: the files
+// bind to a wick's ALG_ID and block 0, and carry it whole.
+func object(t *testing.T, seed byte, blocks int) (raw []byte, o *wick.Object) {
 	t.Helper()
 	raw = append([]byte{byte(alg.Argon2idShort)}, bytes.Repeat([]byte{seed}, blocks*32)...)
-	o, err := chain.Parse(raw)
+	o, err := wick.Parse(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return raw, o
 }
 
-func key(seed byte) chain.Key { return chain.Key(bytes.Repeat([]byte{seed}, 32)) }
+func key(seed byte) wick.Key { return wick.Key(bytes.Repeat([]byte{seed}, 32)) }
 
 // flip returns a copy of b with one bit of byte i flipped.
 func flip(b []byte, i int) []byte {
@@ -32,17 +32,17 @@ func flip(b []byte, i int) []byte {
 	return c
 }
 
-func TestLockFile(t *testing.T) {
+func TestWickFile(t *testing.T) {
 	obj, o := object(t, 1, 5)
-	lf := EncodeLockFile(obj)
-	if len(lf) != lockFileHeader+len(obj) || !bytes.HasPrefix(lf, []byte("\x00CL-LOCK\x01")) {
-		t.Fatalf("lock file header: %x", lf[:lockFileHeader])
+	lf := EncodeWickFile(obj)
+	if len(lf) != wickFileHeader+len(obj) || !bytes.HasPrefix(lf, []byte("\x00WS-WICK\x01")) {
+		t.Fatalf("wick file header: %x", lf[:wickFileHeader])
 	}
-	got, wrapped, err := DecodeLock(lf)
+	got, wrapped, err := DecodeWick(lf)
 	if err != nil || !wrapped || !bytes.Equal(got, obj) {
 		t.Fatalf("round trip: wrapped=%v err=%v", wrapped, err)
 	}
-	if got, wrapped, err := DecodeLock(obj); err != nil || wrapped || !bytes.Equal(got, obj) {
+	if got, wrapped, err := DecodeWick(obj); err != nil || wrapped || !bytes.Equal(got, obj) {
 		t.Fatalf("raw object: wrapped=%v err=%v", wrapped, err)
 	}
 
@@ -62,9 +62,9 @@ func TestLockFile(t *testing.T) {
 		{"version 2", version2, ErrFormat},
 		{"truncated header", lf[:20], ErrFormat},
 		{"payload file", payload, ErrFormat},
-		{"unknown 0x00 magic", append([]byte("\x00CL-NOPE\x01"), lf[9:]...), ErrFormat},
+		{"unknown 0x00 magic", append([]byte("\x00WS-NOPE\x01"), lf[9:]...), ErrFormat},
 	} {
-		if _, _, err := DecodeLock(c.in); !errors.Is(err, c.want) {
+		if _, _, err := DecodeWick(c.in); !errors.Is(err, c.want) {
 			t.Errorf("%s: err %v, want %v", c.name, err, c.want)
 		}
 	}
@@ -75,7 +75,7 @@ func TestLockFile(t *testing.T) {
 func TestRawNeverSniffedAsContainer(t *testing.T) {
 	for id := 1; id < 256; id++ {
 		raw := append([]byte{byte(id)}, make([]byte, 2*32)...)
-		if _, wrapped, err := DecodeLock(raw); wrapped || err != nil {
+		if _, wrapped, err := DecodeWick(raw); wrapped || err != nil {
 			t.Fatalf("id %#x: wrapped=%v err=%v", id, wrapped, err)
 		}
 	}
@@ -93,7 +93,7 @@ func TestPayload(t *testing.T) {
 	if len(payload) != payloadOverhead+len(pt) {
 		t.Fatalf("payload is %d bytes, want %d", len(payload), payloadOverhead+len(pt))
 	}
-	if !IsPayload(payload) || IsPayload(EncodeLockFile(obj)) {
+	if !IsPayload(payload) || IsPayload(EncodeWickFile(obj)) {
 		t.Fatal("IsPayload")
 	}
 	if got, err := OpenPayload(k, payload); err != nil || !bytes.Equal(got, pt) {
@@ -105,31 +105,31 @@ func TestPayload(t *testing.T) {
 	version2[8] = 2
 	for _, c := range []struct {
 		name    string
-		lock    *chain.Object
+		wick    *wick.Object
 		payload []byte
 		want    error
 	}{
-		{"own lock", o, payload, nil},
-		{"no lock: integrity only", nil, payload, nil},
-		{"other lock", other, payload, ErrMismatch},
-		{"lock id bit", o, flip(payload, 9), ErrCorrupt},
+		{"own wick", o, payload, nil},
+		{"no wick: integrity only", nil, payload, nil},
+		{"other wick", other, payload, ErrMismatch},
+		{"wick id bit", o, flip(payload, 9), ErrCorrupt},
 		{"ciphertext bit", o, flip(payload, payloadHeader+20), ErrCorrupt},
 		{"trailer bit", o, flip(payload, len(payload)-1), ErrCorrupt},
 		{"version 2", o, version2, ErrFormat},
 		{"truncated", o, payload[:payloadOverhead-1], ErrFormat},
-		{"lock file", o, EncodeLockFile(obj), ErrFormat},
+		{"wick file", o, EncodeWickFile(obj), ErrFormat},
 	} {
-		if err := CheckPayload(c.lock, c.payload); !errors.Is(err, c.want) {
+		if err := CheckPayload(c.wick, c.payload); !errors.Is(err, c.want) {
 			t.Errorf("%s: err %v, want %v", c.name, err, c.want)
 		}
 	}
 
-	// LOCK_ID covers block 0 only: extension rewrites the last block, and the
+	// WICK_ID covers block 0 only: extension rewrites the last block, and the
 	// payload still pairs.
 	if _, ext := object(t, 7, 6); CheckPayload(ext, payload) != nil {
-		t.Error("a lock with the same block 0 does not pair")
+		t.Error("a wick with the same block 0 does not pair")
 	}
-	longer, _ := chain.Parse(flip(obj, len(obj)-1))
+	longer, _ := wick.Parse(flip(obj, len(obj)-1))
 	if err := CheckPayload(longer, payload); err != nil {
 		t.Errorf("last block changed (as extension does): %v", err)
 	}

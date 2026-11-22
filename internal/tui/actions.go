@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"chainlock/alg"
-	"chainlock/internal/ops"
-	"chainlock/internal/store"
+	"wickset/alg"
+	"wickset/internal/ops"
+	"wickset/internal/store"
 )
 
 // An action is one of the menu's operations.
@@ -24,12 +24,12 @@ const (
 
 // actions are the menu's entries, in its order.
 var actions = [...]struct{ name, doing, done, desc string }{
-	actSeal:   {"Seal", "Sealing", "Sealed", "Lock a file so it opens only after a delay"},
-	actOpen:   {"Open", "Opening", "Opened", "Wait out a lock and decrypt its file"},
-	actExtend: {"Extend", "Extending", "Extended", "Make a lock take longer to open"},
-	actBypass: {"Bypass", "Decrypting", "Decrypted", "Open a locked file at once with its saved key"},
-	actInfo:   {"Info", "Checking", "Checked", "Show a lock's details and check its files"},
-	actBench:  {"Bench", "Timing", "Timed", "Time this machine to see how long locks take"},
+	actSeal:   {"Seal", "Sealing", "Sealed", "Seal a file so it opens only after a delay"},
+	actOpen:   {"Open", "Opening", "Opened", "Burn a wick and decrypt its file"},
+	actExtend: {"Extend", "Extending", "Extended", "Make a wick take longer to burn"},
+	actBypass: {"Bypass", "Decrypting", "Decrypted", "Open a sealed file at once with its saved key"},
+	actInfo:   {"Info", "Checking", "Checked", "Show a wick's details and check its files"},
+	actBench:  {"Bench", "Timing", "Timed", "Time this machine to see how long wicks take"},
 }
 
 // actionKeys opens an action from the menu with one key press. The menu
@@ -58,7 +58,7 @@ func guess(file string) action {
 	switch {
 	case strings.HasSuffix(file, store.PayloadSuffix):
 		return actBypass
-	case strings.HasSuffix(file, store.LockSuffix), strings.HasSuffix(file, store.ArchiveSuffix):
+	case strings.HasSuffix(file, store.WickSuffix), strings.HasSuffix(file, store.ArchiveSuffix):
 		return actOpen
 	}
 	return actSeal

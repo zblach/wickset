@@ -10,8 +10,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
 
-	"chainlock/internal/ops"
-	"chainlock/internal/store"
+	"wickset/internal/ops"
+	"wickset/internal/store"
 )
 
 // Rendering here is pure: a screen is a function of the window width and a
@@ -19,11 +19,11 @@ import (
 // builds those values from its live state; tests and previews build them by
 // hand (render_test.go), so any state can be drawn without running anything.
 
-// chrome frames a screen: the title, chainlock[gpu] when the GPU computes,
+// chrome frames a screen: the title, wickset[gpu] when the GPU computes,
 // the test-build banner if testBuild, the parts with a blank line between
 // each, and the help line (styled by its maker, help.Model), within margins.
 func chrome(width int, testBuild, gpu bool, parts []string, help string) string {
-	title := "chainlock"
+	title := "wickset"
 	if gpu {
 		title += "[gpu]"
 	}
@@ -188,7 +188,7 @@ func notesView(notes []ops.Note) string {
 	return strings.Join(blocks, "\n\n")
 }
 
-// storedAs says how a lock is stored, in the seal form's words.
+// storedAs says how a wick is stored, in the seal form's words.
 func storedAs(f store.Form) string {
 	return [...]string{
 		store.FormFile:    "two files, damage check passed",
@@ -198,7 +198,7 @@ func storedAs(f store.Form) string {
 }
 
 func infoView(in *ops.Info) string {
-	encrypted := okStyle.Render("belongs to this lock, undamaged")
+	encrypted := okStyle.Render("belongs to this wick, undamaged")
 	switch {
 	case in.PayloadMissing():
 		encrypted = subtleStyle.Render("not found")
@@ -208,7 +208,7 @@ func infoView(in *ops.Info) string {
 	return Columns(KeyColumn).Rows(
 		[]string{"Algorithm", in.Alg.ID().String()},
 		[]string{"Steps", fmt.Sprintf("%d to open (N = %d)", in.N+1, in.N)},
-		[]string{"Lock size", ops.Bytes(int64(in.Size))},
+		[]string{"Wick size", ops.Bytes(int64(in.Size))},
 		[]string{"Stored as", storedAs(in.Form)},
 		[]string{"Encrypted file", in.PayloadWhere + ": " + encrypted},
 	).String()
@@ -228,7 +228,7 @@ func benchView(b ops.Bench) string {
 
 // BenchTable is bench's predictions as a table, for the CLI as well.
 func BenchTable(b ops.Bench) *table.Table {
-	t := Columns(HeaderRow).Headers("steps", "opens in ≈", "seals in ≈", "lock size")
+	t := Columns(HeaderRow).Headers("steps", "opens in ≈", "seals in ≈", "wick size")
 	for _, r := range b.Rows {
 		t.Row(strconv.Itoa(r.N+1), ops.Span(r.Solve), ops.Span(r.Seal), ops.Bytes(int64(r.Size)))
 	}

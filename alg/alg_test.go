@@ -46,20 +46,20 @@ func TestEvalCancels(t *testing.T) {
 	}
 }
 
-// TestSHA256Chain: a chain is K hashes, the first of the domain and x, as
+// TestSHA256Iter: a step is K hashes, the first of the domain and x, as
 // SPEC.md §3.3 defines it, whatever the chunking; Run reports each chunk and
 // stops between them on cancel.
-func TestSHA256Chain(t *testing.T) {
-	c := SHA256Chain{Domain: []byte("chainlock/v1::test"), K: 3*chunk + 5}
+func TestSHA256Iter(t *testing.T) {
+	c := SHA256Iter{Domain: []byte("wickset/v1::test"), K: 3*chunk + 5}
 	x := []byte("an input of thirty-two bytes....")
-	want := sha256.Sum256(append([]byte("chainlock/v1::test"), x...))
+	want := sha256.Sum256(append([]byte("wickset/v1::test"), x...))
 	for range c.K - 1 {
 		want = sha256.Sum256(want[:])
 	}
 	var reports []uint64
 	got, err := c.Run(t.Context(), c.Start(x), c.K-1, func(done uint64) { reports = append(reports, done) })
 	if err != nil || got != want {
-		t.Fatalf("chain %x, %v; want %x", got, err, want)
+		t.Fatalf("step %x, %v; want %x", got, err, want)
 	}
 	if fmt.Sprint(reports) != fmt.Sprint([]uint64{chunk, 2 * chunk, 3 * chunk, 3*chunk + 4}) {
 		t.Fatalf("reports %v", reports)
@@ -71,7 +71,7 @@ func TestSHA256Chain(t *testing.T) {
 	}
 	for _, id := range []ID{SHA256Short, SHA256Long} {
 		a, _ := Lookup(id)
-		if c, ok := SHA256ChainOf(a); !ok || string(c.Domain) != fmt.Sprintf("chainlock/v1::%02x", byte(id)) {
+		if c, ok := SHA256IterOf(a); !ok || string(c.Domain) != fmt.Sprintf("wickset/v1::%02x", byte(id)) {
 			t.Fatalf("%v: domain %q", id, c.Domain)
 		}
 	}

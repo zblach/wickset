@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"chainlock/chain"
-	"chainlock/internal/ops"
+	"wickset/internal/ops"
+	"wickset/wick"
 )
 
 // terminal reports an operation on standard error. Off a terminal (a log, a
@@ -60,12 +60,12 @@ func (t *terminal) event(e ops.Event) {
 	case !t.tty:
 		// A line per finished step; nothing partway, which comes many times
 		// a second.
-		if e.Kind == ops.StepEvent && e.Step.Kind == chain.Finished {
+		if e.Kind == ops.StepEvent && e.Step.Kind == wick.Finished {
 			fmt.Fprintf(t.w, "%s (%d/%d)\n", t.run.Stage, t.run.Done, t.run.Total)
 		}
 	case e.Kind == ops.StageBegan:
 		t.begin()
-	case t.run.Done == t.run.Total && e.Step.Kind == chain.Finished:
+	case t.run.Done == t.run.Total && e.Step.Kind == wick.Finished:
 		t.end()
 	}
 }

@@ -1,4 +1,4 @@
-package chain
+package wick
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 func TestKeyEncoding(t *testing.T) {
 	k := Key(secretFor(testAlg32, 0x50))
 	text := k.Encode()
-	if !strings.HasPrefix(text, "chainlock-key-v1:") || strings.ContainsAny(text, "+/=") {
+	if !strings.HasPrefix(text, "wickset-key-v1:") || strings.ContainsAny(text, "+/=") {
 		t.Fatalf("encoding %q: want the prefix and unpadded URL-safe base64", text)
 	}
 	got, err := ParseKey(" " + text + "\n")
@@ -20,8 +20,8 @@ func TestKeyEncoding(t *testing.T) {
 	}
 	for _, bad := range []string{
 		"",
-		strings.TrimPrefix(text, "chainlock-key-v1:"), // no prefix
-		"chainlock-key-v2:" + text[len("chainlock-key-v1:"):],
+		strings.TrimPrefix(text, "wickset-key-v1:"), // no prefix
+		"wickset-key-v2:" + text[len("wickset-key-v1:"):],
 		text + "!",                     // not base64
 		Key(make([]byte, 20)).Encode(), // not an AES key size
 	} {
