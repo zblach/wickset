@@ -318,13 +318,25 @@ func (b Bench) Sealing() string {
 }
 
 // rate is a seal's pace, in steps a second: the best round's, or with no
-// rounds (one core), one step at a time.
+// rounds (one core), one step at a time. A round is never set against Step:
+// Step is the fastest opener's, which this build's sealing may not match,
+// and a speed-up under 1 says so.
 func (b Bench) rate() float64 {
-	best := 1 / b.Step.Seconds()
-	for _, r := range b.Rounds {
-		best = max(best, r.Rate)
+	if r, ok := b.Best(); ok {
+		return r.Rate
 	}
-	return best
+	return 1 / b.Step.Seconds()
+}
+
+// Best is the fastest round, if any ran.
+func (b Bench) Best() (BenchRound, bool) {
+	var best BenchRound
+	for _, r := range b.Rounds {
+		if r.Rate > best.Rate {
+			best = r
+		}
+	}
+	return best, len(b.Rounds) > 0
 }
 
 // SpeedUp is how many times faster a wick seals here than it opens: the

@@ -102,9 +102,14 @@ func TestBench(t *testing.T) {
 	if fmt.Sprint(labels) != fmt.Sprint(want) || b.SealOn != "" || len(b.Rounds) != len(want)-1 {
 		t.Fatalf("runs %q sealing on %q, rounds %v; want runs %q", labels, b.SealOn, b.Rounds, want)
 	}
+	// The seal's pace is the best round's, whether or not it beats one step
+	// alone: Step is the fastest opener's, not this build's.
 	best := 1 / b.Step.Seconds()
-	for _, r := range b.Rounds {
-		best = max(best, r.Rate)
+	if len(b.Rounds) > 0 {
+		best = 0
+		for _, r := range b.Rounds {
+			best = max(best, r.Rate)
+		}
 	}
 	for _, r := range b.Rows {
 		seal := max(time.Duration(float64(r.N+1)/best*float64(time.Second)), b.Step)
@@ -116,8 +121,9 @@ func TestBench(t *testing.T) {
 		t.Errorf("Sealing() = %q", s)
 	}
 	// The speed-up is the seal's pace against one step at a time: what a
-	// seal of many steps takes, against the solve.
-	if got, want := b.SpeedUp(), best*b.Step.Seconds(); got != want || got < 1 {
+	// seal of many steps takes, against the solve. It may be under 1, where
+	// this build seals slower than the fastest opener burns.
+	if got, want := b.SpeedUp(), best*b.Step.Seconds(); got != want {
 		t.Errorf("SpeedUp %v, want %v (best %.1f steps/s, step %v)", got, want, best, b.Step)
 	}
 	if last := b.Rows[len(b.Rows)-1]; math.Abs(last.Solve.Seconds()/last.Seal.Seconds()-b.SpeedUp()) > 0.01*b.SpeedUp() {

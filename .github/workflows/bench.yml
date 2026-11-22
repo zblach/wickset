@@ -20,10 +20,10 @@ jobs:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # tags, so the build knows its version
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: libsodium
@@ -33,10 +33,12 @@ jobs:
         run: |
           { echo '### ${{ matrix.runner }}'; echo '```'; lscpu | grep -E 'Model name|^CPU\(s\)|Flags' | cut -c1-400; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
+      # Everything below writes outside the checkout, so the builds are not
+      # "+dirty" in their version.
       - name: SHA-256 routines
         run: |
-          go test -count=1 -v -run 'TestEachRoutine|TestMatchesStdlib|TestFaster' ./internal/sha256iter | tee sha.txt
-          { echo '```'; grep -E -- '---|accelerated|M/s|cannot' sha.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          go test -count=1 -v -run 'TestEachRoutine|TestMatchesStdlib|TestFaster' ./internal/sha256iter | tee "$RUNNER_TEMP/sha.txt"
+          { echo '```'; grep -E -- '---|accelerated|M/s|cannot' "$RUNNER_TEMP/sha.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: test
         run: |
@@ -48,8 +50,9 @@ jobs:
 
       - name: bench
         run: |
-          go build -o wickset-go ./cmd/wickset
-          go build -tags libsodium -o wickset-sodium ./cmd/wickset
+          go build -o "$RUNNER_TEMP/wickset-go" ./cmd/wickset
+          go build -tags libsodium -o "$RUNNER_TEMP/wickset-sodium" ./cmd/wickset
+          cd "$RUNNER_TEMP"
           ./wickset-go --version
           {
             for a in 1 2 3 4; do ./wickset-go --cpu bench --csv --alg "$a"; done
@@ -57,7 +60,7 @@ jobs:
           } | awk 'NR==1 || !/^date,/' > scores.csv
           { echo '```csv'; cat scores.csv; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: scores-${{ matrix.runner }}
-          path: scores.csv
+          path: ${{ runner.temp }}/scores.csv

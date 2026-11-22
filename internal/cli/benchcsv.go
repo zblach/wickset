@@ -30,10 +30,8 @@ func writeBenchCSV(w io.Writer, b ops.Bench) error {
 	if b.SealOn != "" {
 		sealOn = "gpu"
 	}
-	for _, r := range b.Rounds {
-		if r.Rate > rate {
-			atOnce, rate = r.At, r.Rate
-		}
+	if r, ok := b.Best(); ok {
+		atOnce, rate = r.At, r.Rate
 	}
 	f := func(v float64) string { return strconv.FormatFloat(v, 'g', 4, 64) }
 	cw := csv.NewWriter(w)
