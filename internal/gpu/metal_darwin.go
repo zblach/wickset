@@ -97,6 +97,12 @@ func (d *Device) Memory() uint64 { return uint64(C.clm_working_set(d.c)) }
 // of up to Batch. Inputs are all one length. Cancelling ctx stops it at the
 // next segment, a quarter pass.
 func (d *Device) Hash(ctx context.Context, p argon2.Params, inputs [][]byte) ([][]byte, error) {
+	return d.HashPartway(ctx, p, inputs, nil)
+}
+
+// HashPartway is Hash, reporting after each segment, if report is set, how
+// many of the batch under way's segments (four a pass) are done, of all.
+func (d *Device) HashPartway(ctx context.Context, p argon2.Params, inputs [][]byte, report func(done, total uint64)) ([][]byte, error) {
 	if len(inputs) == 0 {
 		return nil, nil
 	}
@@ -113,7 +119,7 @@ func (d *Device) Hash(ctx context.Context, p argon2.Params, inputs [][]byte) ([]
 	defer d.mu.Unlock()
 	var out [][]byte
 	for batch := d.Batch(p); len(inputs) > 0; inputs = inputs[min(batch, len(inputs)):] {
-		got, err := d.batch(ctx, p, inputs[:min(batch, len(inputs))])
+		got, err := d.batch(ctx, p, inputs[:min(batch, len(inputs))], report)
 		if err != nil {
 			return nil, err
 		}
@@ -123,7 +129,7 @@ func (d *Device) Hash(ctx context.Context, p argon2.Params, inputs [][]byte) ([]
 }
 
 // batch runs one batch: init, every segment, final.
-func (d *Device) batch(ctx context.Context, p argon2.Params, inputs [][]byte) ([][]byte, error) {
+func (d *Device) batch(ctx context.Context, p argon2.Params, inputs [][]byte, report func(done, total uint64)) ([][]byte, error) {
 	job := job(p, len(inputs), len(inputs[0]))
 	flat := make([]byte, 0, len(inputs)*len(inputs[0]))
 	for _, in := range inputs {
@@ -144,6 +150,9 @@ func (d *Device) batch(ctx context.Context, p argon2.Params, inputs [][]byte) ([
 			}
 			if C.clm_segment(d.c, j, C.uint32_t(pass), C.uint32_t(slice), &cerr) != 0 {
 				return nil, cError(fmt.Sprintf("gpu: pass %d slice %d", pass, slice), cerr)
+			}
+			if report != nil {
+				report(uint64(pass*syncPoints+slice+1), uint64(p.Passes*syncPoints))
 			}
 		}
 	}

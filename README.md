@@ -141,7 +141,7 @@ however far the lock is extended: keep it apart from the lock.
 ## Library
 
     lock, payload, key, err := chainlock.Seal(ctx, pt, chainlock.SealOpts{Alg: alg.SHA256Short, N: 99})
-    pt, key, err := chainlock.Open(ctx, lock, payload, progress)
+    pt, key, err := chainlock.Open(ctx, lock, payload, report)   // report: chain.Report, or nil
     ext, err := chain.Extend(ctx, lock, 50, chain.Opts{})
     pt, err = format.OpenPayload(key, payload)   // with a saved key
 

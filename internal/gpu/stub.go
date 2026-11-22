@@ -28,6 +28,10 @@ func (d *Device) Hash(context.Context, argon2.Params, [][]byte) ([][]byte, error
 	return nil, ErrUnavailable
 }
 
+func (d *Device) HashPartway(context.Context, argon2.Params, [][]byte, func(uint64, uint64)) ([][]byte, error) {
+	return nil, ErrUnavailable
+}
+
 func (d *Device) ChainBatch() int { return 0 }
 
 func (d *Device) Chain(context.Context, [][32]byte, uint64, func(uint64)) ([][32]byte, error) {

@@ -38,13 +38,17 @@ func (b *batcher) BatchSize(a alg.Alg) int {
 	return min(b.d.Batch(p), b.size)
 }
 
-func (b *batcher) Batch(ctx context.Context, a alg.Alg, xs [][]byte) ([][]byte, error) {
+func (b *batcher) Batch(ctx context.Context, a alg.Alg, xs [][]byte, partway alg.Partway) ([][]byte, error) {
 	c, ok := alg.SHA256ChainOf(a)
 	if !ok {
 		p, _ := alg.Argon2idParams(a)
-		return b.d.Hash(ctx, p, xs)
+		return b.d.HashPartway(ctx, p, xs, partway)
 	}
-	hs, err := b.d.Chain(ctx, starts(c, xs), c.K-1, nil)
+	var report func(uint64)
+	if partway != nil {
+		report = func(done uint64) { partway(done+1, c.K) } // and the first, Start
+	}
+	hs, err := b.d.Chain(ctx, starts(c, xs), c.K-1, report)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +78,7 @@ func (b *batcher) sample(ctx context.Context, a alg.Alg, xs [][]byte) (time.Dura
 	c, ok := alg.SHA256ChainOf(a)
 	if !ok {
 		start := time.Now()
-		_, err := b.Batch(ctx, a, xs)
+		_, err := b.Batch(ctx, a, xs, nil)
 		return time.Since(start), 1, err
 	}
 	hs := starts(c, xs)

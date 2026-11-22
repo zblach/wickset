@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -22,9 +21,12 @@ type fakeBatcher struct {
 
 func (f *fakeBatcher) BatchSize(alg.Alg) int { return f.size }
 
-func (f *fakeBatcher) Batch(ctx context.Context, _ alg.Alg, xs [][]byte) ([][]byte, error) {
+func (f *fakeBatcher) Batch(ctx context.Context, _ alg.Alg, xs [][]byte, partway alg.Partway) ([][]byte, error) {
 	if int(f.batches.Add(1)) == f.fail {
 		return nil, errors.New("out of GPU memory")
+	}
+	if partway != nil {
+		partway(1, 2)
 	}
 	out := make([][]byte, len(xs))
 	for i, x := range xs {
@@ -38,35 +40,25 @@ func (f *fakeBatcher) Batch(ctx context.Context, _ alg.Alg, xs [][]byte) ([][]by
 }
 
 // counted is computeOutputs over n random inputs with b, checking every
-// output against H and that progress counts each once, and reporting which
-// workers started an evaluation.
+// output against H and the run's events (checkEvents), and reporting which
+// workers began an evaluation.
 func counted(t *testing.T, n int, b Batcher, failed func(error)) (map[int]bool, error) {
 	t.Helper()
 	xs, _ := randBlocks(n, testAlg32.BlockSize())
-	var mu sync.Mutex
-	progress := 0
-	workers := map[int]bool{}
+	var events []Event
 	outs, err := computeOutputs(t.Context(), testAlg32, xs, Opts{
 		Workers: 2, Batcher: b, BatchFailed: failed,
-		Progress: func(done, total int) {
-			mu.Lock()
-			defer mu.Unlock()
-			if done != progress+1 || total != n {
-				t.Errorf("progress %d/%d after %d", done, total, progress)
-			}
-			progress = done
-		},
-		Activity: func(w, first, n int) {
-			mu.Lock()
-			defer mu.Unlock()
-			if first >= 0 {
-				workers[w] = true
-				if w == 0 && b != nil && n > 1 && first%n != 0 && first+n != len(xs) {
-					t.Errorf("batch of %d from %d: not where the batches fall", n, first)
-				}
-			}
-		},
+		Report: func(e Event) { events = append(events, e) }, // serialized
 	})
+	workers := map[int]bool{}
+	for _, e := range events {
+		if e.Kind == Began {
+			workers[e.Worker] = true
+			if e.N > 1 && e.First%e.N != 0 && e.First+e.N != n {
+				t.Errorf("batch of %d from %d: not where the batches fall", e.N, e.First)
+			}
+		}
+	}
 	if err != nil {
 		return workers, err
 	}
@@ -75,10 +67,50 @@ func counted(t *testing.T, n int, b Batcher, failed func(error)) (map[int]bool, 
 			t.Fatalf("output %d is not H", i)
 		}
 	}
-	if progress != n {
-		t.Fatalf("progress reached %d of %d", progress, n)
-	}
+	checkEvents(t, events, n)
 	return workers, nil
+}
+
+// checkEvents holds a finished run's events to Event's rules: each of total
+// evaluations finished once, by the worker that began it last, after it
+// began; nothing from a worker after it went idle, and every worker idle at
+// the end. A failed batch leaves its evaluations begun and never finished,
+// for the workers to begin again.
+func checkEvents(t *testing.T, events []Event, total int) {
+	t.Helper()
+	began := map[int]int{} // evaluation → worker
+	finished := map[int]bool{}
+	idle := map[int]bool{}
+	for _, e := range events {
+		if idle[e.Worker] {
+			t.Fatalf("worker %d: %+v after going idle", e.Worker, e)
+		}
+		switch e.Kind {
+		case Began:
+			for i := e.First; i < e.First+e.N; i++ {
+				began[i] = e.Worker
+			}
+		case Finished, Partway:
+			for i := e.First; i < e.First+e.N; i++ {
+				if w, ok := began[i]; !ok || w != e.Worker || finished[i] {
+					t.Fatalf("%+v: evaluation %d not begun by this worker, or finished already", e, i)
+				}
+				if e.Kind == Finished {
+					finished[i] = true
+				}
+			}
+		case Idle:
+			idle[e.Worker] = true
+		}
+	}
+	if len(finished) != total {
+		t.Fatalf("%d of %d evaluations finished", len(finished), total)
+	}
+	for w := range began {
+		if !idle[began[w]] {
+			t.Fatalf("worker %d never went idle", began[w])
+		}
+	}
 }
 
 // TestBatcherRuns: a batcher computes the whole run, and the workers none.

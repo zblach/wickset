@@ -21,25 +21,47 @@ func (fakeAlg) H(x []byte) []byte { return x }
 func (fakeAlg) ID() alg.ID        { return 0xF0 }
 func (fakeAlg) MemBytes() int     { return 0 }
 
+// record is an Env that keeps every event, and the events as lines.
+func record() (*Env, *[]Event) {
+	var events []Event
+	return &Env{Events: func(e Event) { events = append(events, e) }}, &events
+}
+
+// script writes events as lines: "measuring of 3", "began 0 #0", ...
+func script(events []Event) string {
+	var lines []string
+	for _, e := range events {
+		s := e.Step
+		switch {
+		case e.Kind == StageBegan:
+			lines = append(lines, fmt.Sprintf("%s of %d", e.Stage, e.Total))
+		case s.Kind == chain.Began:
+			lines = append(lines, fmt.Sprintf("began %d #%d+%d", s.Worker, s.First, s.N))
+		case s.Kind == chain.Finished:
+			lines = append(lines, fmt.Sprintf("finished %d #%d+%d", s.Worker, s.First, s.N))
+		case s.Kind == chain.Idle:
+			lines = append(lines, fmt.Sprintf("idle %d", s.Worker))
+		}
+	}
+	return strings.Join(lines, ", ")
+}
+
 // TestStepTimeReports: timing a step, which is seconds per sample for the
-// long algorithm, reports each sample as it runs, as a solve reports steps.
+// long algorithms, reports each sample as it runs, as a solve reports steps.
 func TestStepTimeReports(t *testing.T) {
-	var events []string
-	e := &Env{
-		Progress: func(label string) chain.Progress {
-			return func(done, total int) { events = append(events, fmt.Sprintf("%s %d/%d", label, done, total)) }
-		},
-		Activity: func(label string, total int) chain.Activity {
-			events = append(events, fmt.Sprintf("%s of %d", label, total))
-			return func(w, i, _ int) { events = append(events, fmt.Sprintf("w%d #%d", w, i)) }
-		},
+	e, events := record()
+	k, expect, err := e.plan(context.Background(), "sealing", fakeAlg{}, 0, time.Second, 1, nil, 0)
+	if err != nil || k < 1 || expect < 0 {
+		t.Fatalf("steps %d, expect %v, %v", k, expect, err)
 	}
-	if k, err := e.plan(context.Background(), "sealing", fakeAlg{}, 0, time.Second, 1, nil, 0); err != nil || k < 1 {
-		t.Fatalf("steps %d", k)
-	}
-	want := "measuring of 3, w0 #0, measuring 1/3, w0 #1, measuring 2/3, w0 #2, measuring 3/3, w0 #-1"
-	if got := strings.Join(events, ", "); got != want {
+	want := "measuring of 3, began 0 #0+1, finished 0 #0+1, began 0 #1+1, finished 0 #1+1, began 0 #2+1, finished 0 #2+1, idle 0"
+	if got := script(*events); got != want {
 		t.Fatalf("events\n got %s\nwant %s", got, want)
+	}
+	for i := 1; i < len(*events); i++ {
+		if (*events)[i].At.Before((*events)[i-1].At) {
+			t.Fatal("events stamped out of order")
+		}
 	}
 }
 
@@ -47,11 +69,22 @@ func TestStepTimeReports(t *testing.T) {
 // and all of them side by side; a solve takes the steps one after another,
 // and a seal runs at the best round's measured pace.
 func TestBench(t *testing.T) {
+	// Each stage, as its events tell it, ends with every step done.
 	var labels []string
-	e := &Env{Progress: func(label string) chain.Progress {
-		labels = append(labels, label)
-		return nil
+	var run Run
+	ended := func() {
+		if run.Stage != "" && run.Done != run.Total {
+			t.Errorf("%s ended at %d of %d", run.Stage, run.Done, run.Total)
+		}
+	}
+	e := &Env{Events: func(ev Event) {
+		if ev.Kind == StageBegan {
+			ended()
+			labels = append(labels, ev.Stage)
+		}
+		run = run.Apply(ev)
 	}}
+	defer ended()
 	b, err := e.Bench(context.Background(), slowAlg{})
 	if err != nil {
 		t.Fatal(err)

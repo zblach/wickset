@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -38,17 +37,12 @@ func sealWithGPU(t *testing.T, id alg.ID) {
 		t.Fatal(err)
 	}
 	var notes []string
-	var mu sync.Mutex
 	workers := map[int]bool{}
 	e := &Env{
 		Note: func(n Note) { notes = append(notes, n.String()) },
-		Activity: func(label string, total int) chain.Activity {
-			return func(w, first, _ int) {
-				mu.Lock()
-				defer mu.Unlock()
-				if first >= 0 {
-					workers[w] = true
-				}
+		Events: func(ev Event) { // serialized
+			if ev.Kind == StepEvent && ev.Step.Kind == chain.Began {
+				workers[ev.Step.Worker] = true
 			}
 		},
 	}

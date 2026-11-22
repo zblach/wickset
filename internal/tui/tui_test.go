@@ -19,6 +19,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"chainlock/alg"
+	"chainlock/chain"
 	"chainlock/internal/ops"
 	"chainlock/internal/store"
 )
@@ -225,111 +226,71 @@ func TestHelpPanel(t *testing.T) {
 	}
 }
 
+// stage and step script a job's events, at t0 plus s seconds.
+func stage(s float64, label string, total int) ops.Event {
+	return ops.Event{At: t0.Add(secs(s)), Stage: label, Kind: ops.StageBegan, Total: total}
+}
+
+func step(s float64, kind chain.EventKind, worker, first, n int) ops.Event {
+	return ops.Event{At: t0.Add(secs(s)), Kind: ops.StepEvent, Step: chain.Event{Kind: kind, Worker: worker, First: first, N: n}}
+}
+
+func secs(s float64) time.Duration { return time.Duration(s * float64(time.Second)) }
+
+// scripted is a job told only events, as its operation would tell it.
+func scripted(events ...ops.Event) *job {
+	j := newJob(context.Background(), "x", nil, false)
+	for _, e := range events {
+		j.event(e)
+	}
+	return j
+}
+
 // TestFineProgress: a long run shows movement every step, not every percent:
-// fine percentages, a pace, and a step bar once a step time is known.
+// fine percentages, and, one worker at a time, the step under way, filling
+// over the time of the last.
 func TestFineProgress(t *testing.T) {
 	if p := percent(68.0 / 109636); p != "0.06%" {
 		t.Errorf("percent %s", p)
 	}
-	m := newModel(context.Background(), "")
-	step, release := make(chan struct{}), make(chan struct{})
-	m.start("Sealing x", func(ctx context.Context, env *ops.Env) (any, error) {
-		act := env.Activity("sealing", 1000)
-		prog := env.Progress("sealing")
-		act(0, 0, 1)
-		time.Sleep(20 * time.Millisecond)
-		act(0, 1, 1) // the first finished: a step time is known
-		prog(1, 1000)
-		step <- struct{}{}
-		<-release
-		return nil, nil
-	})
-	go m.job.run()
-	<-step
-	v := view(m)
-	// One worker, as a solve has: a second bar for the step, and no grid.
-	for _, s := range []string{"0.10%", "1/1000 steps", "steps/s", "eta ", "step 2", "s of ~"} {
-		if !strings.Contains(v, s) {
-			t.Errorf("view lacks %q:\n%s", s, v)
-		}
+	s := scripted(
+		stage(0, "solving", 1000),
+		step(0, chain.Began, 0, 0, 1),
+		step(2, chain.Finished, 0, 0, 1),
+		step(2, chain.Began, 0, 1, 1),
+	).snapshot()
+	if s.Done != 1 || s.StepAvg != 2*time.Second || s.Rate != 0.5 || s.Workers[0].First != 1 {
+		t.Fatalf("one step in 2 s: %+v", s.Run)
 	}
-	if strings.Contains(v, "worker") {
-		t.Errorf("one worker shown as a grid:\n%s", v)
-	}
-	close(release)
-}
-
-// heldAlg is a step that runs until the test lets it finish.
-type heldAlg struct {
-	alg.Alg
-	release chan struct{}
-}
-
-func (heldAlg) ID() alg.ID          { return 0xF0 }
-func (heldAlg) Name() string        { return "held" }
-func (heldAlg) BlockSize() int      { return 32 }
-func (heldAlg) MemBytes() int       { return 0 }
-func (a heldAlg) H(x []byte) []byte { <-a.release; return x }
-
-// TestBenchProgress: bench's timing steps show as a run, as a solve's do:
-// the overall bar, and a bar for the step under way.
-func TestBenchProgress(t *testing.T) {
-	m := newModel(context.Background(), "")
-	a := heldAlg{release: make(chan struct{})}
-	m.act = actBench
-	m.start("Timing held", func(ctx context.Context, env *ops.Env) (any, error) { return env.Bench(ctx, a) })
-	done := make(chan tea.Msg)
-	go func() { done <- m.job.run() }()
-	a.release <- struct{}{} // the first step finishes; the second is under way
-	time.Sleep(10 * time.Millisecond)
-	v := view(m)
-	for _, s := range []string{"timing", "1/3 steps", "step 2", "eta "} {
-		if !strings.Contains(v, s) {
-			t.Errorf("view lacks %q:\n%s", s, v)
-		}
-	}
-	close(a.release)
-	m.Update(<-done)
-	if v := view(m); !strings.Contains(v, "fastest of 3") {
-		t.Fatalf("result:\n%s", v)
+	lay := newBarLayout(100, s.Run)
+	if f, _ := inFlight(time.Second, s.StepAvg); f != 0.5 || stepView(lay, s.Workers[0], s.StepAvg, t0.Add(3*time.Second)) == "" {
+		t.Fatalf("1 s into a 2 s step: fill %v", f)
 	}
 }
 
-// TestWorkBar: a parallel run shows its steps in progress before any
-// finishes, and those its workers have moved on from as finished.
+// TestWorkBar: a parallel run shows its steps under way before any
+// finishes, and, once finished, as finished.
 func TestWorkBar(t *testing.T) {
-	m := newModel(context.Background(), "")
-	step, release := make(chan struct{}), make(chan struct{})
-	m.start("Sealing x", func(ctx context.Context, env *ops.Env) (any, error) {
-		act := env.Activity("sealing", 5)
-		act(0, 0, 1)
-		act(1, 1, 1)
-		act(2, 2, 1)
-		step <- struct{}{}
-		<-release
-		act(0, 3, 1) // worker 0 finished step 0 and moved on
-		act(1, -1, 0)
-		step <- struct{}{}
-		<-release
-		return nil, nil
-	})
-	go m.job.run()
-
-	<-step
-	s := m.job.snapshot()
-	if got := fmt.Sprint(workCells(5, s)); got != fmt.Sprint([]int{cellBusy, cellBusy, cellBusy, cellPending, cellPending}) {
+	j := scripted(
+		stage(0, "sealing", 5),
+		step(0, chain.Began, 0, 0, 1),
+		step(0, chain.Began, 1, 1, 1),
+		step(0, chain.Began, 2, 2, 1),
+	)
+	if got := fmt.Sprint(workCells(5, j.snapshot().Run)); got != fmt.Sprint([]int{cellBusy, cellBusy, cellBusy, cellPending, cellPending}) {
 		t.Errorf("before any step ends, cells %s", got)
 	}
-	if v := view(m); !strings.Contains(v, "0/5 steps") || !strings.Contains(v, "· 3 workers ·") {
-		t.Errorf("view:\n%s", v)
+	for _, e := range []ops.Event{
+		step(1, chain.Finished, 0, 0, 1),
+		step(1, chain.Began, 0, 3, 1),
+		step(1, chain.Finished, 1, 1, 1),
+		step(1, chain.Idle, 1, 0, 0),
+	} {
+		j.event(e)
 	}
-	release <- struct{}{}
-	<-step
-	s = m.job.snapshot()
-	if got := fmt.Sprint(workCells(5, s)); got != fmt.Sprint([]int{cellDone, cellDone, cellBusy, cellBusy, cellPending}) {
+	if got := fmt.Sprint(workCells(5, j.snapshot().Run)); got != fmt.Sprint([]int{cellDone, cellDone, cellBusy, cellBusy, cellPending}) {
 		t.Errorf("after moves, cells %s", got)
 	}
-	close(release)
 }
 
 // TestCancel: cancelling asks first, then stops the operation, which reports
@@ -338,7 +299,6 @@ func TestCancel(t *testing.T) {
 	m := newModel(context.Background(), "")
 	started := make(chan struct{})
 	m.start("Solving forever", func(ctx context.Context, env *ops.Env) (any, error) {
-		env.Progress("solving")(1, 10)
 		close(started)
 		<-ctx.Done()
 		return nil, ctx.Err()
@@ -348,8 +308,8 @@ func TestCancel(t *testing.T) {
 	<-started
 
 	press(m, ctrlC)
-	if v := view(m); !m.confirm || !strings.Contains(v, "Cancel?") || !strings.Contains(v, "1/10 steps") {
-		t.Fatalf("ctrl+c did not ask:\n%s", v)
+	if !m.confirm || m.job.snapshot().cancelled {
+		t.Fatal("ctrl+c did not ask, or cancelled without asking")
 	}
 	press(m, tea.KeyPressMsg{Code: 'n', Text: "n"})
 	if m.confirm || m.job.snapshot().cancelled {
@@ -358,8 +318,8 @@ func TestCancel(t *testing.T) {
 	press(m, ctrlC)
 	press(m, keyY)
 	m.Update(<-done)
-	if v := view(m); m.screen != resultScreen || !m.res.cancelled || !strings.Contains(v, "Cancelled") {
-		t.Fatalf("after y:\n%s", v)
+	if m.screen != resultScreen || !m.res.cancelled {
+		t.Fatalf("after y: screen %v, cancelled %v", m.screen, m.res.cancelled)
 	}
 }
 

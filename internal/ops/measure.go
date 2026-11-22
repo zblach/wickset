@@ -44,12 +44,12 @@ const slice = 1 << 24
 // cpuPart runs a's step on x on this goroutine, for a timing: whole, or for
 // a SHA-256 chain longer than slice, its first slice hashes. It returns the
 // share of a step it ran.
-func cpuPart(ctx context.Context, a alg.Alg, x []byte) (float64, error) {
+func cpuPart(ctx context.Context, a alg.Alg, x []byte, partway alg.Partway) (float64, error) {
 	if c, ok := alg.SHA256ChainOf(a); ok && c.K > slice {
-		_, err := c.Run(ctx, c.Start(x), slice-1, nil)
+		_, err := c.Run(ctx, c.Start(x), slice-1, func(done uint64) { partway(done+1, slice) })
 		return float64(slice) / float64(c.K), err
 	}
-	_, err := alg.Eval(ctx, a, x)
+	_, err := alg.EvalPartway(ctx, a, x, partway)
 	return 1, err
 }
 
@@ -62,16 +62,12 @@ func cpuPart(ctx context.Context, a alg.Alg, x []byte) (float64, error) {
 // this time into steps, and a slow estimate would make too few, opening the
 // lock early; the fastest errs, if at all, toward more.
 func (e *Env) stepTime(ctx context.Context, a alg.Alg, label string, b *batcher) (time.Duration, error) {
-	progress, activity := e.progress(label), e.activity(label, stepSamples)
-	if activity != nil {
-		defer activity(0, -1, 0)
-	}
+	send := sender(e.stage(label, stepSamples, 0))
+	defer send(chain.Event{Kind: chain.Idle})
 	x := make([]byte, a.BlockSize())
 	fastest := time.Duration(math.MaxInt64)
 	for i := range stepSamples {
-		if activity != nil {
-			activity(0, i, 1)
-		}
+		send(chain.Event{Kind: chain.Began, First: i, N: 1})
 		x[0] = byte(i)
 		t := time.Now()
 		var el time.Duration
@@ -80,18 +76,32 @@ func (e *Env) stepTime(ctx context.Context, a alg.Alg, label string, b *batcher)
 		if b != nil {
 			el, share, err = b.sample(ctx, a, [][]byte{x})
 		} else {
-			share, err = cpuPart(ctx, a, x)
+			share, err = cpuPart(ctx, a, x, partway(send, 0, i, 1))
 			el = time.Since(t)
 		}
 		if err != nil {
 			return 0, err
 		}
 		fastest = min(fastest, time.Duration(float64(el)/share))
-		if progress != nil {
-			progress(i+1, stepSamples)
-		}
+		send(chain.Event{Kind: chain.Finished, First: i, N: 1})
 	}
 	return fastest, nil
+}
+
+// sender is report, or with none, a report that does nothing.
+func sender(report chain.Report) chain.Report {
+	if report == nil {
+		return func(chain.Event) {}
+	}
+	return report
+}
+
+// partway reports through send how far worker is through its n steps from
+// first.
+func partway(send chain.Report, worker, first, n int) alg.Partway {
+	return func(done, total uint64) {
+		send(chain.Event{Kind: chain.Partway, Worker: worker, First: first, N: n, Part: done, OfParts: total})
+	}
 }
 
 // roundRate measures how fast a seal runs: n steps at once, as n workers or
@@ -99,45 +109,34 @@ func (e *Env) stepTime(ctx context.Context, a alg.Alg, label string, b *batcher)
 // they share memory bandwidth, so this is slower than n single steps. A
 // long SHA-256 chain runs only part of each step, as stepTime's do.
 func (e *Env) roundRate(ctx context.Context, a alg.Alg, label string, n int, b *batcher) (float64, error) {
-	progress, activity := e.progress(label), e.activity(label, n)
+	send := sender(e.stage(label, n, 0))
 	xs := make([][]byte, n)
 	for i := range xs {
 		xs[i] = make([]byte, a.BlockSize())
 		xs[i][0], xs[i][1], xs[i][2] = byte(i), byte(i>>8), byte(i>>16)
 	}
 	if b != nil {
-		if activity != nil {
-			activity(0, 0, n)
-			defer activity(0, -1, 0)
-		}
+		// The round is one batch, begun and finished together, however much
+		// of each step it ran.
+		defer send(chain.Event{Kind: chain.Idle})
+		send(chain.Event{Kind: chain.Began, First: 0, N: n})
 		el, share, err := b.sample(ctx, a, xs)
 		if err != nil {
 			return 0, err
 		}
-		if progress != nil {
-			for i := range n {
-				progress(i+1, n)
-			}
-		}
+		send(chain.Event{Kind: chain.Finished, First: 0, N: n})
 		return float64(n) * share / el.Seconds(), nil
 	}
 	start := time.Now()
-	var mu sync.Mutex
 	var wg sync.WaitGroup
-	done := 0
 	errs := make([]error, n)
 	shares := make([]float64, n)
 	for w := range n {
 		wg.Go(func() {
-			if activity != nil {
-				activity(w, w, 1)
-				defer activity(w, -1, 0)
-			}
-			if shares[w], errs[w] = cpuPart(ctx, a, xs[w]); errs[w] == nil && progress != nil {
-				mu.Lock()
-				done++
-				progress(done, n)
-				mu.Unlock()
+			defer send(chain.Event{Kind: chain.Idle, Worker: w})
+			send(chain.Event{Kind: chain.Began, Worker: w, First: w, N: 1})
+			if shares[w], errs[w] = cpuPart(ctx, a, xs[w], partway(send, w, w, 1)); errs[w] == nil {
+				send(chain.Event{Kind: chain.Finished, Worker: w, First: w, N: 1})
 			}
 		})
 	}
@@ -155,17 +154,19 @@ func (e *Env) roundRate(ctx context.Context, a alg.Alg, label string, n int, b *
 // runs one step at a time, on one core or, slower, on a GPU: in GPU mode both
 // are timed, and the faster sets the steps, so the delay holds against
 // either. gpu is how many steps the GPU (b) holds at a time; 0 for none.
-func (e *Env) plan(ctx context.Context, label string, a alg.Alg, steps int, delay time.Duration, workers int, b *batcher, gpu int) (int, error) {
+// expect is a step's measured time on one core, as a worker runs it; 0 if
+// not measured.
+func (e *Env) plan(ctx context.Context, label string, a alg.Alg, steps int, delay time.Duration, workers int, b *batcher, gpu int) (n int, expect time.Duration, err error) {
 	if delay > 0 {
-		st, err := e.stepTime(ctx, a, "measuring", nil)
-		if err != nil {
-			return 0, err
+		if expect, err = e.stepTime(ctx, a, "measuring", nil); err != nil {
+			return 0, 0, err
 		}
+		st := expect
 		on := fmt.Sprintf("one core %v", st.Round(time.Millisecond))
 		if b != nil {
 			gt, err := e.stepTime(ctx, a, "measuring the GPU", b)
 			if err != nil {
-				return 0, err
+				return 0, 0, err
 			}
 			on += fmt.Sprintf(", the GPU %v", gt.Round(time.Millisecond))
 			st = min(st, gt)
@@ -179,7 +180,7 @@ func (e *Env) plan(ctx context.Context, label string, a alg.Alg, steps int, dela
 		e.note(Detail, "the GPU computes the steps, up to %d at a time; one of each batch is checked on the CPU", gpu)
 	}
 	e.warnMemory(a, workers, steps, gpu)
-	return steps, nil
+	return steps, expect, nil
 }
 
 // workerCount is how many workers a parallel run of evals evaluations uses.

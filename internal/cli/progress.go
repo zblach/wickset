@@ -20,21 +20,9 @@ type terminal struct {
 	w   io.Writer
 	tty bool
 
-	mu  sync.Mutex
-	run *run // the run on the line, if any
-}
-
-// run is one labelled run of steps: measuring, timing, sealing, solving or
-// extending.
-type run struct {
-	label       string
-	start       time.Time
-	done, total int
-	workers     int           // the most seen at once; a solve or a timing is one
-	batch       int           // the largest batch begun, on a GPU; 0 for none
-	stepStart   time.Time     // when the one worker's step under way began
-	eta         time.Duration // as of the last finished step, as the TUI keeps it
-	stop        chan struct{} // ends the redraws
+	mu   sync.Mutex
+	run  ops.Run       // the run under way, as its events tell it
+	stop chan struct{} // ends its line's redraws; nil with no line
 }
 
 func newTerminal() *terminal {
@@ -45,80 +33,57 @@ func newTerminal() *terminal {
 // env reports on the process's own streams: notes and progress on standard
 // error, and a key given as "-" on standard input or output.
 func (t *terminal) env() *ops.Env {
-	e := &ops.Env{Note: t.note, Progress: t.progress, Stdin: os.Stdin, Stdout: os.Stdout}
-	if t.tty {
-		e.Activity = t.activity
-	}
-	return e
+	return &ops.Env{Note: t.note, Events: t.event, Stdin: os.Stdin, Stdout: os.Stdout}
 }
 
 // note prints a note on a line of its own, then the run's line again below it.
 func (t *terminal) note(n ops.Note) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.run != nil {
+	if t.stop != nil {
 		fmt.Fprint(t.w, "\r\x1b[K")
 	}
 	fmt.Fprintln(t.w, n)
-	if t.run != nil {
+	if t.stop != nil {
 		t.draw()
 	}
 }
 
-func (t *terminal) progress(label string) chain.Progress {
-	if !t.tty {
-		return func(done, total int) { fmt.Fprintf(t.w, "%s (%d/%d)\n", label, done, total) }
-	}
-	return func(done, total int) {
-		t.mu.Lock()
-		defer t.mu.Unlock()
-		r := t.runFor(label, total)
-		r.done = done
-		if el := time.Since(r.start); done > 0 {
-			r.eta = el / time.Duration(done) * time.Duration(total-done)
-		}
-		if done == total {
-			t.end()
-		}
-	}
-}
-
-func (t *terminal) activity(label string, total int) chain.Activity {
+func (t *terminal) event(e ops.Event) {
 	t.mu.Lock()
-	r := t.runFor(label, total)
-	t.mu.Unlock()
-	return func(w, first, n int) {
-		t.mu.Lock()
-		defer t.mu.Unlock()
-		r.workers = max(r.workers, w+1)
-		if first >= 0 {
-			r.stepStart = time.Now()
+	defer t.mu.Unlock()
+	if e.Kind == ops.StageBegan {
+		t.end()
+	}
+	t.run = t.run.Apply(e)
+	switch {
+	case !t.tty:
+		// A line per finished step; nothing partway, which comes many times
+		// a second.
+		if e.Kind == ops.StepEvent && e.Step.Kind == chain.Finished {
+			fmt.Fprintf(t.w, "%s (%d/%d)\n", t.run.Stage, t.run.Done, t.run.Total)
 		}
-		if n > 1 {
-			r.batch = max(r.batch, n)
-		}
+	case e.Kind == ops.StageBegan:
+		t.begin()
+	case t.run.Done == t.run.Total && e.Step.Kind == chain.Finished:
+		t.end()
 	}
 }
 
-// runFor is the run named label on the line, starting it, and its redraws,
-// if another or none is there. Called with t.mu held.
-func (t *terminal) runFor(label string, total int) *run {
-	if r := t.run; r != nil && r.label == label {
-		return r
-	}
-	t.end()
-	r := &run{label: label, start: time.Now(), total: total, stop: make(chan struct{})}
-	t.run = r
+// begin puts the run on the line, redrawn until end. Called with t.mu held.
+func (t *terminal) begin() {
+	stop := make(chan struct{})
+	t.stop = stop
 	go func() {
 		tick := time.NewTicker(500 * time.Millisecond)
 		defer tick.Stop()
 		for {
 			select {
-			case <-r.stop:
+			case <-stop:
 				return
 			case <-tick.C:
 				t.mu.Lock()
-				if t.run == r {
+				if t.stop == stop {
 					t.draw()
 				}
 				t.mu.Unlock()
@@ -126,19 +91,18 @@ func (t *terminal) runFor(label string, total int) *run {
 		}
 	}()
 	t.draw()
-	return r
 }
 
 // end finishes the run on the line, if any: drawn a last time, and left
 // above whatever is printed next. Called with t.mu held.
 func (t *terminal) end() {
-	if t.run == nil {
+	if t.stop == nil {
 		return
 	}
 	t.draw()
 	fmt.Fprintln(t.w)
-	close(t.run.stop)
-	t.run = nil
+	close(t.stop)
+	t.stop = nil
 }
 
 // close ends the line before the process prints its result or error.
@@ -151,18 +115,18 @@ func (t *terminal) close() {
 // draw rewrites the line. Called with t.mu held.
 func (t *terminal) draw() {
 	r := t.run
-	line := fmt.Sprintf("%s %d/%d steps (%.2f%%) · elapsed %s", r.label, r.done, r.total,
-		100*float64(r.done)/float64(max(r.total, 1)), ops.Span(time.Since(r.start)))
+	line := fmt.Sprintf("%s %d/%d steps (%.2f%%) · elapsed %s", r.Stage, r.Done, r.Total,
+		100*r.Fraction(), ops.Span(time.Since(r.Start)))
 	switch {
-	case r.batch > 0:
-		line += fmt.Sprintf(" · GPU, batches of %d", r.batch)
-	case r.workers > 1:
-		line += fmt.Sprintf(" · %d workers", r.workers)
-	case !r.stepStart.IsZero() && r.done < r.total:
-		line += fmt.Sprintf(" · step %d: %.1fs", r.done+1, time.Since(r.stepStart).Seconds())
+	case r.Batch > 0:
+		line += fmt.Sprintf(" · GPU, batches of %d", r.Batch)
+	case len(r.Workers) > 1:
+		line += fmt.Sprintf(" · %d workers", len(r.Workers))
+	case len(r.Workers) == 1 && r.Workers[0].First >= 0:
+		line += fmt.Sprintf(" · step %d: %.1fs", r.Workers[0].First+1, time.Since(r.Workers[0].Since).Seconds())
 	}
-	if r.done > 0 && r.done < r.total {
-		line += " · eta " + ops.Span(r.eta)
+	if r.Done > 0 && r.Done < r.Total {
+		line += " · eta " + ops.Span(r.ETA)
 	}
 	fmt.Fprint(t.w, "\r\x1b[K"+line)
 }

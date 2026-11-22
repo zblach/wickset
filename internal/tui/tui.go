@@ -325,7 +325,7 @@ func (m *model) View() tea.View {
 	v.AltScreen = true
 	v.WindowTitle = "chainlock"
 	if m.job != nil {
-		v.ProgressBar = tea.NewProgressBar(tea.ProgressBarDefault, int(100*m.job.snapshot().fraction()))
+		v.ProgressBar = tea.NewProgressBar(tea.ProgressBarDefault, int(100*m.job.snapshot().Fraction()))
 	}
 	return v
 }

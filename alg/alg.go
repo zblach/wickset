@@ -99,6 +99,12 @@ func (a *argon2idAlg) eval(ctx context.Context, x []byte) ([]byte, error) {
 	return a.params.Key(ctx, x)
 }
 
+// evalPartway is eval; an Argon2id step reports nothing partway (the
+// vendored Argon2 takes a context, not a callback).
+func (a *argon2idAlg) evalPartway(ctx context.Context, x []byte, _ Partway) ([]byte, error) {
+	return a.eval(ctx, x)
+}
+
 // Argon2idParams is a's parameters, for running the same step on another
 // argon2.Hasher (a GPU): Key with them is a.H. ok is false if a is not an
 // Argon2id entry.
@@ -159,12 +165,16 @@ func (a *sha256Alg) BlockSize() int { return sha256.Size }
 func (a *sha256Alg) MemBytes() int  { return 0 }
 
 func (a *sha256Alg) H(x []byte) []byte {
-	out, _ := a.eval(context.Background(), x)
+	out, _ := a.evalPartway(context.Background(), x, nil)
 	return out
 }
 
-func (a *sha256Alg) eval(ctx context.Context, x []byte) ([]byte, error) {
-	h, err := a.chain.Run(ctx, a.chain.Start(x), a.chain.K-1, nil)
+func (a *sha256Alg) evalPartway(ctx context.Context, x []byte, partway Partway) ([]byte, error) {
+	var report func(uint64)
+	if partway != nil {
+		report = func(done uint64) { partway(done+1, a.chain.K) } // and the first, Start
+	}
+	h, err := a.chain.Run(ctx, a.chain.Start(x), a.chain.K-1, report)
 	if err != nil {
 		return nil, err
 	}
@@ -188,11 +198,22 @@ func SHA256ChainOf(a Alg) (c SHA256Chain, ok bool) {
 // freeing their core and memory; any other step is left to finish in the
 // background, and its result dropped.
 func Eval(ctx context.Context, a Alg, x []byte) ([]byte, error) {
+	return EvalPartway(ctx, a, x, nil)
+}
+
+// Partway reports how far through a step is: done of total units of work
+// (for a SHA-256 chain, hashes). It is called from the evaluating goroutine
+// and should return promptly.
+type Partway func(done, total uint64)
+
+// EvalPartway is Eval, reporting to partway, if set, as the step goes: a
+// SHA-256 chain every million hashes or so; any other step not at all.
+func EvalPartway(ctx context.Context, a Alg, x []byte, partway Partway) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if c, ok := a.(evaler); ok {
-		return c.eval(ctx, x)
+		return c.evalPartway(ctx, x, partway)
 	}
 	out := make(chan []byte, 1) // buffered: an abandoned step still exits
 	go func() { out <- a.H(x) }()
@@ -206,7 +227,7 @@ func Eval(ctx context.Context, a Alg, x []byte) ([]byte, error) {
 
 // evaler is an Alg that can stop mid-step.
 type evaler interface {
-	eval(context.Context, []byte) ([]byte, error)
+	evalPartway(context.Context, []byte, Partway) ([]byte, error)
 }
 
 // registry is the closed set of defined algorithms (SPEC.md §3), indexed by

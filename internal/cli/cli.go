@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/alecthomas/kong"
 
@@ -37,7 +38,8 @@ func Main() {
 	if ops.TestBuild() {
 		fmt.Fprintln(os.Stderr, ops.TestBuildWarning)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	// Ctrl-C, or a kill or service manager's TERM, stops the work mid-step.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	term := newTerminal()
 	env := term.env()

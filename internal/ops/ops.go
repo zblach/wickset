@@ -63,12 +63,12 @@ func (e *Env) Seal(ctx context.Context, a SealArgs) error {
 	if err != nil {
 		return err
 	}
-	steps, err := e.plan(ctx, "sealing", a.Alg, a.N+1, a.Delay, a.Workers, b, gpu)
+	steps, expect, err := e.plan(ctx, "sealing", a.Alg, a.N+1, a.Delay, a.Workers, b, gpu)
 	if err != nil {
 		return err
 	}
 	n := steps - 1
-	opts.Progress, opts.Activity = e.progress("sealing"), e.activity("sealing", steps)
+	opts.Report = e.stage("sealing", steps, expect)
 	lock, payload, key, err := chainlock.Seal(ctx, pt, chainlock.SealOpts{Alg: a.Alg.ID(), N: n, Opts: opts})
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func (e *Env) Open(ctx context.Context, a OpenArgs) error {
 	}
 	// One step at a time, on the CPU even in GPU mode: one core runs a single
 	// step faster than a GPU does.
-	pt, key, err := chainlock.Open(ctx, l.Obj, payload, e.solveProgress(l.Parsed.N+1))
+	pt, key, err := chainlock.Open(ctx, l.Obj, payload, e.stage("solving", l.Parsed.N+1, 0))
 	if err != nil {
 		return err
 	}
@@ -185,11 +185,11 @@ func (e *Env) Extend(ctx context.Context, a ExtendArgs) error {
 	if err != nil {
 		return err
 	}
-	add, err := e.plan(ctx, "extending", p.Alg, a.Add, a.Delay, a.Workers, b, gpu)
+	add, expect, err := e.plan(ctx, "extending", p.Alg, a.Add, a.Delay, a.Workers, b, gpu)
 	if err != nil {
 		return err
 	}
-	opts.Progress, opts.Activity = e.progress("extending"), e.activity("extending", add)
+	opts.Report = e.stage("extending", add, expect)
 	ext, err := chain.Extend(ctx, l.Obj, add, opts)
 	if err != nil {
 		return err

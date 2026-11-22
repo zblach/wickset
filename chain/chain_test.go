@@ -168,8 +168,8 @@ func TestCancelMidStep(t *testing.T) {
 	done := make(chan error)
 	go func() {
 		_, _, err := New(ctx, alg.Argon2idShort, 3, Opts{Workers: 2,
-			Activity: func(_, first, _ int) {
-				if first >= 0 {
+			Report: func(e Event) {
+				if e.Kind == Began {
 					started <- struct{}{}
 				}
 			}})
@@ -188,46 +188,34 @@ func TestCancelMidStep(t *testing.T) {
 	}
 }
 
-// TestActivity: every evaluation is announced once, by the worker that runs
-// it and before it finishes, and every worker announces its end.
-func TestActivity(t *testing.T) {
+// TestEvents: workers report every evaluation's start and finish, one at a
+// time, by Event's rules; a SHA-256 chain step reports partway too.
+func TestEvents(t *testing.T) {
 	a := testAlg32
 	xs, _ := randBlocks(20, a.BlockSize())
-	var mu sync.Mutex
-	started := make(map[int]int) // index → worker
-	ended := make(map[int]bool)
-	var progressBeforeStart bool
-	_, err := computeOutputs(t.Context(), a, xs, Opts{
-		Workers: 3,
-		Progress: func(done, _ int) {
-			mu.Lock()
-			defer mu.Unlock()
-			progressBeforeStart = progressBeforeStart || len(started) < done
-		},
-		Activity: func(w, i, n int) {
-			mu.Lock()
-			defer mu.Unlock()
-			switch {
-			case w < 0 || w >= 3 || ended[w]:
-				t.Errorf("worker %d active after its end, or out of range", w)
-			case i == -1:
-				ended[w] = true
-			case n != 1:
-				t.Errorf("a worker began %d evaluations at once", n)
-			default:
-				if _, dup := started[i]; dup {
-					t.Errorf("evaluation %d started twice", i)
-				}
-				started[i] = w
-			}
-		},
-	})
-	if err != nil {
+	var events []Event
+	if _, err := computeOutputs(t.Context(), a, xs, Opts{
+		Workers: 3, Report: func(e Event) { events = append(events, e) },
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(started) != len(xs) || len(ended) != 3 || progressBeforeStart {
-		t.Fatalf("started %d of %d, %d of 3 workers ended, progress before start: %v",
-			len(started), len(xs), len(ended), progressBeforeStart)
+	checkEvents(t, events, len(xs))
+	for _, e := range events {
+		if e.Worker < 0 || e.Worker >= 3 || (e.Kind == Began && e.N != 1) {
+			t.Fatalf("%+v: out of range, or a worker began more than one", e)
+		}
+	}
+
+	// A real chain step reports partway, in hashes, as it goes.
+	sha, _ := alg.Lookup(alg.SHA256Short)
+	events = nil
+	if _, err := computeOutputs(t.Context(), sha, xs[:1], Opts{Report: func(e Event) { events = append(events, e) }}); err != nil {
+		t.Fatal(err)
+	}
+	checkEvents(t, events, 1)
+	last := events[len(events)-3] // ... Partway, Finished, Idle
+	if c, _ := alg.SHA256ChainOf(sha); last.Kind != Partway || last.Part != c.K || last.OfParts != c.K {
+		t.Fatalf("last partway %+v", last)
 	}
 }
 
@@ -429,20 +417,23 @@ func TestCancel(t *testing.T) {
 	}
 }
 
-func TestProgress(t *testing.T) {
+// TestSolveEvents: a solve is one worker, taking its steps from 0 in order.
+func TestSolveEvents(t *testing.T) {
 	a := testAlg32
 	obj := mustCreate(t, a, 3, secretFor(a, 0))
-	var seen []int
-	if _, err := Solve(t.Context(), mustParse(t, a, obj), func(d, total int) {
-		if total != 4 {
-			t.Errorf("total %d", total)
-		}
-		seen = append(seen, d)
-	}); err != nil {
+	var events []Event
+	if _, err := Solve(t.Context(), mustParse(t, a, obj), func(e Event) { events = append(events, e) }); err != nil {
 		t.Fatal(err)
 	}
-	if fmt.Sprint(seen) != "[1 2 3 4]" {
-		t.Fatalf("progress %v", seen)
+	checkEvents(t, events, 4)
+	var order []int
+	for _, e := range events {
+		if e.Kind == Began {
+			order = append(order, e.First)
+		}
+	}
+	if fmt.Sprint(order) != "[0 1 2 3]" {
+		t.Fatalf("began %v", order)
 	}
 }
 

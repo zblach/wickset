@@ -41,19 +41,20 @@ func Seal(ctx context.Context, plaintext []byte, o SealOpts) (lock, payload []by
 // then solves the lock and decrypts the payload. The checks come first, so a
 // damaged or mismatched payload fails before any evaluation of H. key is the
 // S that solving recovered, for opening again later with format.OpenPayload.
-func Open(ctx context.Context, lock, payload []byte, progress chain.Progress) (plaintext []byte, key chain.Key, err error) {
+// report, if set, is told of each step (chain.Solve).
+func Open(ctx context.Context, lock, payload []byte, report chain.Report) (plaintext []byte, key chain.Key, err error) {
 	o, err := chain.Parse(lock)
 	if err != nil {
 		return nil, nil, err
 	}
-	return open(ctx, o, payload, progress)
+	return open(ctx, o, payload, report)
 }
 
-func open(ctx context.Context, o *chain.Object, payload []byte, progress chain.Progress) ([]byte, chain.Key, error) {
+func open(ctx context.Context, o *chain.Object, payload []byte, report chain.Report) ([]byte, chain.Key, error) {
 	if err := format.CheckPayload(o, payload); err != nil {
 		return nil, nil, err
 	}
-	key, err := chain.Solve(ctx, o, progress)
+	key, err := chain.Solve(ctx, o, report)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -75,47 +75,46 @@ func renderRun(width int, f runFrame) string {
 	switch {
 	case s.cancelled:
 		lines = append(lines, warnStyle.Render("cancelling: stopping every worker mid-step…"))
-	case s.total == 0:
+	case s.Total == 0:
 		lines = append(lines, subtleStyle.Render(fmt.Sprintf("preparing…  %v", el.Round(time.Second))))
 	default:
 		// Long runs move the bar a cell every few minutes, so the numbers
 		// beside it are fine enough to move every step.
 		pace, eta := "estimating", "estimating"
-		if r := s.rate; r > 0 {
-			eta = ops.Span(s.eta)
+		if r := s.Rate; r > 0 {
+			eta = ops.Span(s.ETA)
 			if r >= 1 {
 				pace = fmt.Sprintf("%.1f steps/s", r)
 			} else {
 				pace = fmt.Sprintf("%.1fs a step", 1/r)
 			}
 		}
-		if s.stage == "measuring" {
+		if s.Stage == "measuring" {
 			lines = append(lines, warnStyle.Render("Not sealing yet: timing the step on one core, as the solver runs it, to turn the\n"+
 				"delay into a step count. Sealing then starts on every worker."))
 		}
 		// Every width is set by the total, not the count so far, so nothing
 		// shifts or shrinks as the count gains digits.
-		lay := newBarLayout(width, s)
-		bar := lay.bar.ViewAs(s.fraction())
+		lay := newBarLayout(width, s.Run)
+		bar := lay.bar.ViewAs(s.Fraction())
 		batch := 0 // the GPU's batch, if the run is on one
-		if len(s.workers) == 1 {
-			batch = s.workers[0].n
+		if len(s.Workers) == 1 {
+			batch = s.Batch
 		}
-		spread := len(s.workers) > 1 || batch > 1
-		if spread {
-			bar = workBar(lay.width, s)
+		if len(s.Workers) > 1 || batch > 1 {
+			bar = workBar(lay.width, s.Run)
 		}
 		// The text right of every bar starts in one column.
-		count := fmt.Sprintf("%d/%d steps", s.done, s.total) // padded to its widest, below
+		count := fmt.Sprintf("%d/%d steps", s.Done, s.Total) // padded to its widest, below
 		lines = append(lines, fmt.Sprintf("%-*s %s %-6s %-*s",
-			lay.label, s.stage, bar, percent(s.fraction()), 2*digits(s.total)+len("/ steps"), count))
+			lay.label, s.Stage, bar, percent(s.Fraction()), 2*digits(s.Total)+len("/ steps"), count))
 		switch {
 		case batch > 1: // the GPU's batch in flight
-			if l := stepView(lay, s.workers[0], s.batchAvg, f.now); l != "" {
+			if l := stepView(lay, s.Workers[0], s.BatchAvg, f.now); l != "" {
 				lines = append(lines, l)
 			}
-		case len(s.workers) == 1: // a solve, or timing: one step at a time
-			if l := stepView(lay, s.workers[0], s.stepAvg, f.now); l != "" {
+		case len(s.Workers) == 1: // a solve, or timing: one step at a time
+			if l := stepView(lay, s.Workers[0], s.StepAvg, f.now); l != "" {
 				lines = append(lines, l)
 			}
 		}
@@ -123,8 +122,8 @@ func renderRun(width int, f runFrame) string {
 		switch {
 		case batch > 1:
 			stats = append(stats, fmt.Sprintf("GPU, batches of %d", batch))
-		case len(s.workers) > 1:
-			stats = append(stats, fmt.Sprintf("%d workers", len(s.workers)))
+		case len(s.Workers) > 1:
+			stats = append(stats, fmt.Sprintf("%d workers", len(s.Workers)))
 		}
 		stats = append(stats, pace, "eta "+eta)
 		lines = append(lines, subtleStyle.Render(strings.Join(stats, " · ")))
@@ -276,10 +275,10 @@ func KeyColumn(_, col int) bool { return col == 0 }
 // progress or pending: the run's bar, with the work under way in a second
 // color, so how much runs at once shows at a glance. A cell holding any step
 // in progress shows in progress; the steps begun are claimed in order, so
-// below s.claimed the rest are finished.
-func workBar(width int, s snapshot) string {
+// below r.Claimed the rest are finished.
+func workBar(width int, r ops.Run) string {
 	var b strings.Builder
-	cells := workCells(width, s)
+	cells := workCells(width, r)
 	for i := 0; i < len(cells); {
 		j := i
 		for j < len(cells) && cells[j] == cells[i] {
@@ -292,15 +291,15 @@ func workBar(width int, s snapshot) string {
 }
 
 // workCells is the state of each of a workBar's width cells.
-func workCells(width int, s snapshot) []int {
+func workCells(width int, r ops.Run) []int {
 	cells := make([]int, width)
 	for c := range cells {
-		lo := c * s.total / width
-		hi := max((c+1)*s.total/width, lo+1)
+		lo := c * r.Total / width
+		hi := max((c+1)*r.Total/width, lo+1)
 		switch {
-		case slices.ContainsFunc(s.workers, func(w worker) bool { return w.busy(lo, hi) }):
+		case slices.ContainsFunc(r.Workers, func(w ops.Worker) bool { return w.Busy(lo, hi) }):
 			cells[c] = cellBusy
-		case hi <= s.claimed:
+		case hi <= r.Claimed:
 			cells[c] = cellDone
 		default:
 			cells[c] = cellPending
@@ -320,16 +319,16 @@ var cellGlyphs = [...]string{cellDone: "█", cellBusy: "█", cellPending: "░
 
 // stepView is a run's one step in flight, or a GPU's batch, as a second bar
 // under the overall one, filling over the recent time of one (avg).
-func stepView(lay barLayout, w worker, avg time.Duration, now time.Time) string {
-	if w.first < 0 || w.since.IsZero() {
+func stepView(lay barLayout, w ops.Worker, avg time.Duration, now time.Time) string {
+	if w.First < 0 || w.Since.IsZero() {
 		return ""
 	}
-	name := fmt.Sprintf("step %d", w.first+1)
-	if w.n > 1 {
-		name = fmt.Sprintf("batch %d", w.first/w.n+1)
+	name := fmt.Sprintf("step %d", w.First+1)
+	if w.N > 1 {
+		name = fmt.Sprintf("batch %d", w.First/w.N+1)
 	}
 	label := fmt.Sprintf("%-*s", lay.label, name)
-	f, text := inFlight(now.Sub(w.since), avg)
+	f, text := inFlight(now.Sub(w.Since), avg)
 	if avg == 0 {
 		text += ", timing the first"
 	}
@@ -357,9 +356,9 @@ type barLayout struct {
 // stepRightWidth bounds the text right of a step bar: "999.9s of ~999.9s".
 const stepRightWidth = 17
 
-func newBarLayout(width int, s snapshot) barLayout {
-	label := max(len(s.stage), len("batch ")+digits(s.total))
-	right := max(len("100.0%  ")+2*digits(s.total)+len("/ steps"), stepRightWidth) // the overall bar's, a step's
+func newBarLayout(width int, r ops.Run) barLayout {
+	label := max(len(r.Stage), len("batch ")+digits(r.Total))
+	right := max(len("100.0%  ")+2*digits(r.Total)+len("/ steps"), stepRightWidth) // the overall bar's, a step's
 	bar := 40
 	if width > 0 {
 		// margins (2+2), the spaces either side of the bar, and the 1-column
