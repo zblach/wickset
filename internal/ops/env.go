@@ -19,10 +19,11 @@ type Env struct {
 	// terminal leaves them nil, and "-" is then refused.
 	Stdin  io.Reader
 	Stdout io.Writer
-	// GPU has seal and extend compute on the GPU (GPUName) instead of the
+	// GPU lets seal and extend compute on the GPU (GPUName) instead of the
 	// workers: chosen when the program starts, for all it does, and set
-	// wherever there is a GPU unless the user asks for the CPU. Where the GPU
-	// turns out unable, the workers do the work, with a note.
+	// wherever there is a GPU unless the user asks for the CPU. A run goes to
+	// the GPU only where it would finish sooner there (place); where the GPU
+	// turns out slower or unable, the workers do the work, with a note.
 	GPU bool
 	// GPUMemory is how much of the GPU's memory a run's Argon2id batches
 	// may hold; the zero Budget is DefaultShare of it.

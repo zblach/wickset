@@ -75,3 +75,16 @@ func TestJob(t *testing.T) {
 		t.Fatal("check")
 	}
 }
+
+// TestRateAt: a calibration read between and below its probes.
+func TestRateAt(t *testing.T) {
+	probes := []iterRate{{1024, 100}, {2048, 300}, {4096, 330}}
+	for n, want := range map[int]float64{0: 0, 512: 50, 1024: 100, 1500: 100, 2048: 300, 4095: 300, 1 << 20: 330} {
+		if got := rateAt(probes, n); got != want {
+			t.Errorf("rateAt(%d) = %v, want %v", n, got, want)
+		}
+	}
+	if rateAt(nil, 10) != 0 {
+		t.Error("no probes, yet a rate")
+	}
+}

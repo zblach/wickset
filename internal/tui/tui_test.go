@@ -64,9 +64,9 @@ func TestSealOpenBypass(t *testing.T) {
 	os.WriteFile(plain, []byte("attack at dawn"), 0o600)
 	m := newModel(context.Background(), "")
 
-	v := submit(t, m, actSeal, &inputs{File: plain, Alg: 0xFE, Steps: "4", Form: store.FormArchive, KeyOut: keyFile})
-	if _, err := os.Stat(plain + store.ArchiveSuffix); m.res.err != nil || err != nil {
-		t.Fatalf("seal: %v; the archive: %v", m.res.err, err)
+	v := submit(t, m, actSeal, &inputs{File: plain, Alg: 0xFE, Steps: "4", Form: store.FormFile, KeyOut: keyFile})
+	if _, err := os.Stat(plain + store.WickSuffix); m.res.err != nil || err != nil {
+		t.Fatalf("seal: %v; the wick: %v", m.res.err, err)
 	}
 	// CONTAINER.md §5: the key is saved, never shown.
 	key, _, err := store.ReadKeyFile(keyFile)
@@ -83,19 +83,19 @@ func TestSealOpenBypass(t *testing.T) {
 	}
 
 	out := filepath.Join(dir, "opened")
-	v = submit(t, m, actOpen, &inputs{File: plain + store.ArchiveSuffix, Out: out})
+	v = submit(t, m, actOpen, &inputs{File: plain + store.PayloadSuffix, Out: out}) // either file names the pair
 	if got, _ := os.ReadFile(out); m.res.err != nil || string(got) != "attack at dawn" {
 		t.Fatalf("open: %v, wrote %q\n%s", m.res.err, got, v)
 	}
 
 	out = filepath.Join(dir, "bypassed")
-	submit(t, m, actBypass, &inputs{File: plain + store.ArchiveSuffix, Key: keyFile, Out: out})
+	submit(t, m, actBypass, &inputs{File: plain + store.WickSuffix, Key: keyFile, Out: out})
 	if got, _ := os.ReadFile(out); m.res.err != nil || string(got) != "attack at dawn" {
 		t.Fatalf("bypass: %v, wrote %q", m.res.err, got)
 	}
 
-	submit(t, m, actInfo, &inputs{File: plain + store.ArchiveSuffix})
-	if in, ok := m.res.value.(*ops.Info); m.res.err != nil || !ok || in.N != 4 || in.PayloadErr != nil || in.Form != store.FormArchive {
+	submit(t, m, actInfo, &inputs{File: plain + store.PayloadSuffix})
+	if in, ok := m.res.value.(*ops.Info); m.res.err != nil || !ok || in.N != 4 || in.PayloadErr != nil || in.Form != store.FormFile {
 		t.Fatalf("info: %v, %+v", m.res.err, m.res.value)
 	}
 }
@@ -354,10 +354,16 @@ func toMenu(t *testing.T, m *model) {
 }
 
 func TestMenu(t *testing.T) {
-	m := newModel(context.Background(), "x"+store.PayloadSuffix)
-	if m.cursor != actBypass {
-		t.Fatalf("a payload preselects %v", actions[m.cursor].name)
+	// The file given picks the start: open for either file of a pair, seal
+	// for any other, bench with none.
+	for file, want := range map[string]action{
+		"x" + store.PayloadSuffix: actOpen, "x" + store.WickSuffix: actOpen, "x.txt": actSeal, "": actBench,
+	} {
+		if got := newModel(context.Background(), file).cursor; got != want {
+			t.Errorf("%q preselects %v, want %v", file, actions[got].name, actions[want].name)
+		}
 	}
+	m := newModel(context.Background(), "x"+store.PayloadSuffix)
 	v := view(m)
 	want := []string{m.initial, "test build"} // the file given, and the test build's banner
 	for _, a := range actions {
@@ -370,7 +376,7 @@ func TestMenu(t *testing.T) {
 	}
 	// enter takes the preselected action.
 	press(m, enter)
-	if m.screen != formScreen || m.act != actBypass {
+	if m.screen != formScreen || m.act != actOpen {
 		t.Fatalf("enter: screen %v act %v", m.screen, m.act)
 	}
 	toMenu(t, m)

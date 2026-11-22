@@ -47,6 +47,7 @@ type Device struct {
 
 	iterOnce  sync.Once
 	iterBatch int
+	iterRates []iterRate // calibrate's probes, by steps side by side
 }
 
 // Open compiles the kernel for the default Metal device. It takes seconds:
@@ -216,27 +217,36 @@ func (d *Device) Iterate(ctx context.Context, hs [][32]byte, n uint64, report fu
 // first use, in a second or two, by doubling the steps until throughput
 // stops growing.
 func (d *Device) IterBatch() int {
-	d.iterOnce.Do(func() { d.iterBatch = d.calibrate() })
+	d.iterOnce.Do(d.calibrate)
 	return d.iterBatch
 }
 
-func (d *Device) calibrate() int {
+// IterRate is how many hashes a second Iterate runs, all told, with n steps
+// side by side, from IterBatch's calibration: n times one thread's rate
+// below the smallest probe, the nearest probe at or under n above it.
+func (d *Device) IterRate(n int) float64 {
+	d.iterOnce.Do(d.calibrate)
+	return rateAt(d.iterRates, n)
+}
+
+func (d *Device) calibrate() {
 	const hashes = 1 << 11 // per step, per probe: one dispatch
-	best, at, flat := 0.0, minBatch, 0
+	best, flat := 0.0, 0
+	d.iterBatch = minBatch
 	for n := minBatch; n <= maxBatch && flat < 2; n *= 2 {
 		start := time.Now()
 		if _, err := d.Iterate(context.Background(), make([][32]byte, n), hashes, nil); err != nil {
 			break
 		}
-		rate := float64(n) / time.Since(start).Seconds()
+		rate := float64(n*hashes) / time.Since(start).Seconds()
+		d.iterRates = append(d.iterRates, iterRate{n, rate})
 		if rate > best*1.05 {
-			at, flat = n, 0
+			d.iterBatch, flat = n, 0
 		} else {
 			flat++ // two probes in a row without 5% more: past the knee
 		}
 		best = max(best, rate)
 	}
-	return at
 }
 
 func cError(what string, s *C.char) error {

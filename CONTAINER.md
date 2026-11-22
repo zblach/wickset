@@ -18,12 +18,10 @@ A reader tells the forms apart by content alone, in this order:
 | `00 57 53 2D 57 49 43 4B` (`\0WS-WICK`) | wick file (§2)          |
 | `00 57 53 2D 50 41 59 4C` (`\0WS-PAYL`) | payload file (§3)       |
 | any other `00 …`                        | rejected                |
-| `ustar` at offset 257                   | archive (§4)            |
 | anything else                           | raw wick (SPEC.md)      |
 
-This is unambiguous. SPEC.md §3 makes `ALG_ID 0x00` permanently invalid, so no
-raw wick starts with `00`, and a tar archive cannot either (an empty member
-name ends the archive).
+This is unambiguous: SPEC.md §3 makes `ALG_ID 0x00` permanently invalid, so
+no raw wick starts with `00`.
 
 ## 2. Wick file
 
@@ -72,21 +70,20 @@ The whole payload is one GCM message, held in memory and bounded at about
 the data with it by ordinary means. Each `S` is fresh and encrypts one
 message, so nonce reuse cannot occur.
 
-## 4. Archive
+## 4. Pairs
 
-An archive holds one wick file (§2) and its payload file (§3) as a POSIX tar
-(ustar, or pax where a name needs it), so standard tools can list and extract
-it:
+A wick and its payload are always two files, as they live different lives:
+the wick grows with every extension and shrinks as it burns, while the
+payload never changes once sealed. Keeping them apart means an extension or
+a partly burned copy (§6) never rewrites or copies the payload, which may be
+large, and lets the two travel by different routes.
 
-* exactly two members, both regular files with no directory part, one named
-  `NAME.wick` and one `NAME.payload` for the same `NAME`;
-* written with mode 0600, uid/gid 0, empty user and group names and mtime 0,
-  so the archive reveals nothing about who made it or when;
-* no compression: both members are indistinguishable from random bytes.
+wickset names a pair `FILE.wick` and `FILE.payload`, and opens it back into
+`FILE`. Either file names the pair: given one, a reader finds the other
+beside it by name, and checks that they pair (§3) before burning. To send a
+pair as one file, use any archiver; wickset reads only the files themselves:
 
-The CLI names an archive `FILE.wick.tar` and opens it back into `FILE`.
-Extending an archive rewrites its wick member and copies the payload member
-unchanged.
+    tar cf notes.tar notes.txt.wick notes.txt.payload
 
 ## 5. Key
 

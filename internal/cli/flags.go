@@ -1,16 +1,83 @@
 package cli
 
 import (
+	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/alecthomas/kong"
+	"github.com/posener/complete"
+
 	"wickset/alg"
 	"wickset/internal/ops"
+	"wickset/internal/store"
 )
 
+// outputMapper reads an output path, as the types "outfile" and "keyfile"
+// (with dash, which also takes "-" for standard output). Each is checked as
+// kong reads it (store.CheckOutput), so a path no output can go to is a
+// usage error before anything runs; ops checks again, for every front end.
+func outputMapper(dash bool) kong.MapperFunc {
+	return func(ctx *kong.DecodeContext, target reflect.Value) error {
+		var path string
+		if err := ctx.Scan.PopValueInto("path", &path); err != nil {
+			return err
+		}
+		if !dash || path != "-" {
+			path = kong.ExpandPath(path)
+			if err := store.CheckOutput(path); err != nil {
+				return err
+			}
+		}
+		target.SetString(path)
+		return nil
+	}
+}
+
+// either predicts what any of ps does, each suggestion once: each file
+// predictor also offers the directories to go into, which complete's own
+// PredictOr would repeat.
+func either(ps ...complete.Predictor) complete.Predictor {
+	return complete.PredictFunc(func(a complete.Args) []string {
+		var out []string
+		seen := map[string]bool{}
+		for _, p := range ps {
+			for _, s := range p.Predict(a) {
+				if !seen[s] {
+					seen[s] = true
+					out = append(out, s)
+				}
+			}
+		}
+		return out
+	})
+}
+
+// predictors tell a shell what each argument takes, by the name in its
+// predictor tag: wicks for open, payloads for bypass, the defined
+// algorithms for --alg.
+func predictors() map[string]complete.Predictor {
+	wick := complete.PredictFiles("*.wick")
+	payload := complete.PredictFiles("*.payload")
+	var algs []string
+	for _, a := range alg.All() {
+		algs = append(algs, fmt.Sprintf("%#02x", byte(a.ID())), a.Name())
+	}
+	return map[string]complete.Predictor{
+		"file":    complete.PredictFiles("*"),
+		"wick":    wick,
+		"payload": payload,
+		"either":  either(wick, payload),
+		"key":     complete.PredictFiles("*.key"),
+		"alg":     complete.PredictSet(algs...),
+		"shell":   complete.PredictSet(shells...),
+	}
+}
+
 // algFlag is a defined algorithm given by id (1, 0x01) or by name
-// (sha256-iter-k23). Ids that don't fit a byte are rejected, not wrapped.
+// (sha256-iter-k24). Ids that don't fit a byte are rejected, not wrapped.
 type algFlag struct{ alg.Alg }
 
 func (f *algFlag) UnmarshalText(text []byte) error {

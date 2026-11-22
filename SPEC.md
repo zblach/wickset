@@ -1,4 +1,4 @@
-# wickset — wire format, draft 3
+# wickset — wire format, version 1
 
 A wick: a sequential delay. A secret `S` is masked behind `N+1` inherently
 sequential evaluations of a step function `H`, burned one at a time. Anyone
@@ -69,11 +69,12 @@ were chosen is not part of this specification.
 ### 3.1 `0x01`
 
 ```
-H(x) = Argon2id(password = x, salt = "wickset/v1::01", secret = ε, ad = ε,
+H(x) = Argon2id(password = x, salt = "wickset/v1::0x01", secret = ε, ad = ε,
                 m = 131072 KiB, t = 5, p = 1, outLen = 32)
 ```
 
 Argon2id v1.3 per RFC 9106, version 0x13. The salt is the ASCII string above,
+16 bytes (the salt length common Argon2id APIs require, such as libsodium's),
 the same for every step of every wick of this entry, so steps are
 deliberately not bound to position, wick or length, and the wick can be
 lengthened (§7). The `v1` is domain separation only: the wick carries no
@@ -82,24 +83,24 @@ single step cannot be spread across cores.
 
 ### 3.2 `0x02`
 
-As §3.1, except `salt = "wickset/v1::02"` and `t = 192`.
+As §3.1, except `salt = "wickset/v1::0x02"` and `t = 192`.
 
 ### 3.3 `0x03`
 
 ```
-h[1] = SHA-256("wickset/v1::03" ‖ x)
+h[1] = SHA-256("wickset/v1::0x03" ‖ x)
 h[i] = SHA-256(h[i-1])            for i = 2..K
-H(x) = h[K]                       K = 2^23
+H(x) = h[K]                       K = 2^24
 ```
 
-SHA-256 per FIPS 180-4. The domain string is the ASCII string above, 14
+SHA-256 per FIPS 180-4. The domain string is the ASCII string above, 16
 bytes, constant as §3.1's salt is; each later hash is of the 32-byte digest
 before it. `H` is `K` hashes in sequence and nothing else: no memory beyond
 one digest.
 
 ### 3.4 `0x04`
 
-As §3.3, except the domain string is `"wickset/v1::04"` and `K = 2^28`.
+As §3.3, except the domain string is `"wickset/v1::0x04"` and `K = 2^29`.
 
 ## 4. Step function
 

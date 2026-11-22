@@ -32,7 +32,8 @@ func (d *Device) HashPartway(context.Context, argon2.Params, [][]byte, func(uint
 	return nil, ErrUnavailable
 }
 
-func (d *Device) IterBatch() int { return 0 }
+func (d *Device) IterBatch() int       { return 0 }
+func (d *Device) IterRate(int) float64 { return 0 }
 
 func (d *Device) Iterate(context.Context, [][32]byte, uint64, func(uint64)) ([][32]byte, error) {
 	return nil, ErrUnavailable

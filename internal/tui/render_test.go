@@ -46,7 +46,7 @@ func busy(n, first int) []ops.Worker {
 
 // frames are synthetic run screens: any state, drawn without running anything.
 var frames = map[string]runFrame{
-	"open-long":     {title: "Opening notes.wick.tar", start: t0.Add(-35 * time.Second), now: t0, run: solving(219, 2)},
+	"open-long":     {title: "Opening notes.wick", start: t0.Add(-35 * time.Second), now: t0, run: solving(219, 2)},
 	"open-millions": {title: "Opening big.wick", start: t0.Add(-35 * time.Second), now: t0, run: solving(3_000_000, 1_234_567)},
 	// Ten workers on 120 steps: the work under way shows as its own span.
 	"seal-ten": {title: "Sealing notes.txt", start: t0.Add(-20 * time.Second), now: t0, run: snapshot{Run: ops.Run{

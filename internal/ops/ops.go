@@ -29,8 +29,8 @@ type SealArgs struct {
 	N       int
 	Delay   time.Duration
 	Form    store.Form
-	Wick    string // FormFile and FormRaw: wick output (default FILE.wick)
-	Payload string // FormFile and FormRaw: payload output (default FILE.payload)
+	Wick    string // wick output (default FILE.wick)
+	Payload string // payload output (default FILE.payload)
 	KeyOut  string // where to save the key, if anywhere; "-" for Stdout
 	Workers int
 }
@@ -48,7 +48,11 @@ func (e *Env) Seal(ctx context.Context, a SealArgs) error {
 	if err := e.checkKeyOut(a.KeyOut); err != nil {
 		return err
 	}
-	if err := store.Absent(store.SealedPaths(a.File, a.Form, a.Wick, a.Payload)...); err != nil {
+	outs := store.SealedPaths(a.File, a.Wick, a.Payload)
+	if err := store.Absent(outs...); err != nil {
+		return err
+	}
+	if err := checkOutputs(outs...); err != nil {
 		return err
 	}
 	pt, err := os.ReadFile(a.File)
@@ -59,15 +63,16 @@ func (e *Env) Seal(ctx context.Context, a SealArgs) error {
 		a.Alg = AlgFor(a.Delay, e.GPU)
 		e.note(Detail, "algorithm %v for a delay of %s (no algorithm given; the long step from %s up)", a.Alg.ID(), FormatDelay(a.Delay), FormatDelay(LongDelay))
 	}
-	opts, b, gpu, err := e.withGPU(a.Alg, wick.Opts{Workers: a.Workers})
+	b, _, err := e.gpuBatcher(a.Alg)
 	if err != nil {
 		return err
 	}
-	steps, expect, err := e.plan(ctx, "sealing", a.Alg, a.N+1, a.Delay, a.Workers, b, gpu)
+	steps, expect, err := e.plan(ctx, a.Alg, a.N+1, a.Delay, b)
 	if err != nil {
 		return err
 	}
 	n := steps - 1
+	opts := e.place(a.Alg, wick.Opts{Workers: a.Workers}, b, steps)
 	opts.Report = e.stage("sealing", steps, expect)
 	raw, payload, key, err := wickset.Seal(ctx, pt, wickset.SealOpts{Alg: a.Alg.ID(), N: n, Opts: opts})
 	if err != nil {
@@ -86,8 +91,9 @@ func (e *Env) Seal(ctx context.Context, a SealArgs) error {
 
 // OpenArgs burns the wick File and decrypts its payload.
 type OpenArgs struct {
-	File    string // a wick in any form
-	Payload string // default: the archive's own, or FILE.payload
+	File    string // a wick in any form, or its payload (store.Pair)
+	Wick    string // when File is a payload: default FILE.wick
+	Payload string // when File is a wick: default FILE.payload
 	Out     string // default: FILE, which must not exist
 	KeyOut  string // where to save the recovered key, if anywhere; "-" for Stdout
 }
@@ -99,15 +105,25 @@ func (e *Env) Open(ctx context.Context, a OpenArgs) error {
 	if err := e.checkKeyOut(a.KeyOut); err != nil {
 		return err
 	}
-	l, err := store.Load(a.File)
+	wickPath, payloadPath, err := store.Pair(a.File, a.Wick, a.Payload)
 	if err != nil {
 		return err
 	}
-	out, err := store.OutputFor(a.Out, a.File, l.Form.Suffix())
+	l, err := store.Load(wickPath)
 	if err != nil {
 		return err
 	}
-	payload, _, err := l.PayloadOf(a.File, a.Payload)
+	out, err := store.OutputFor(a.Out, wickPath, store.WickSuffix)
+	if err != nil {
+		return err
+	}
+	if err := checkOutputs(out); err != nil {
+		return err
+	}
+	payload, where, err := l.PayloadOf(wickPath, payloadPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("the payload %s is not there; give it with --payload", where)
+	}
 	if err != nil {
 		return err
 	}
@@ -128,7 +144,7 @@ func (e *Env) Open(ctx context.Context, a OpenArgs) error {
 type BypassArgs struct {
 	File    string // a payload, or a wick to take the payload from
 	Key     string // key file; "-" for Stdin
-	Payload string // when File is a wick: default the archive's own, or FILE.payload
+	Payload string // when File is a wick: default FILE.payload
 	Out     string // default: FILE, which must not exist
 }
 
@@ -143,6 +159,9 @@ func (e *Env) Bypass(a BypassArgs) error {
 	}
 	out, err := store.OutputFor(a.Out, a.File, suffix)
 	if err != nil {
+		return err
+	}
+	if err := checkOutputs(out); err != nil {
 		return err
 	}
 	pt, err := format.OpenPayload(key, payload)
@@ -170,6 +189,9 @@ type ExtendArgs struct {
 }
 
 func (e *Env) Extend(ctx context.Context, a ExtendArgs) error {
+	if err := store.NotPayload(a.File, "extend"); err != nil {
+		return err
+	}
 	// Load verifies the digest, so damage is never sealed under a new one.
 	l, err := store.Load(a.File)
 	if err != nil {
@@ -180,15 +202,19 @@ func (e *Env) Extend(ctx context.Context, a ExtendArgs) error {
 			return err
 		}
 	}
+	if err := checkOutputs(cmp.Or(a.Out, a.File)); err != nil {
+		return err
+	}
 	p := l.Parsed
-	opts, b, gpu, err := e.withGPU(p.Alg, wick.Opts{Workers: a.Workers})
+	b, _, err := e.gpuBatcher(p.Alg)
 	if err != nil {
 		return err
 	}
-	add, expect, err := e.plan(ctx, "extending", p.Alg, a.Add, a.Delay, a.Workers, b, gpu)
+	add, expect, err := e.plan(ctx, p.Alg, a.Add, a.Delay, b)
 	if err != nil {
 		return err
 	}
+	opts := e.place(p.Alg, wick.Opts{Workers: a.Workers}, b, add)
 	opts.Report = e.stage("extending", add, expect)
 	ext, err := wick.Extend(ctx, l.Obj, add, opts)
 	if err != nil {
@@ -215,16 +241,20 @@ type Info struct {
 	PayloadErr   error
 }
 
-// Describe reads the wick at path and checks its payload without solving: the
-// archive's own, or FILE.payload beside FILE.wick.
+// Describe reads the wick at path, or the wick of the payload at path
+// (store.Pair), and checks its payload without solving: FILE.payload beside FILE.wick.
 func Describe(path string) (*Info, error) {
-	l, err := store.Load(path)
+	wickPath, payloadPath, err := store.Pair(path, "", "")
+	if err != nil {
+		return nil, err
+	}
+	l, err := store.Load(wickPath)
 	if err != nil {
 		return nil, err
 	}
 	in := &Info{Alg: l.Parsed.Alg, N: l.Parsed.N, Size: len(l.Obj), Form: l.Form}
 	var payload []byte
-	payload, in.PayloadWhere, in.PayloadErr = l.PayloadOf(path, "")
+	payload, in.PayloadWhere, in.PayloadErr = l.PayloadOf(wickPath, payloadPath)
 	if in.PayloadErr == nil {
 		in.PayloadErr = format.CheckPayload(l.Parsed, payload)
 	}

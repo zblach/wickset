@@ -53,12 +53,14 @@ func menuKey(act action) string {
 	return ""
 }
 
-// guess is the action a file given on the command line most likely wants.
+// guess is the action the file given on the command line most likely wants:
+// open for either file of a pair, which names the other; seal for any other
+// file; with none, bench, which needs no file and shows what wicks take here.
 func guess(file string) action {
 	switch {
-	case strings.HasSuffix(file, store.PayloadSuffix):
-		return actBypass
-	case strings.HasSuffix(file, store.WickSuffix), strings.HasSuffix(file, store.ArchiveSuffix):
+	case file == "":
+		return actBench
+	case strings.HasSuffix(file, store.WickSuffix), strings.HasSuffix(file, store.PayloadSuffix):
 		return actOpen
 	}
 	return actSeal

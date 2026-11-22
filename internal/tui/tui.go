@@ -23,8 +23,8 @@ import (
 
 // Run shows the TUI until the user quits. file, if given, preselects the
 // action that suits it, and starts the file field of whichever is chosen.
-// gpu has seal and extend run on the GPU, as the title says throughout,
-// holding at most gpuMemory of its memory.
+// gpu lets seal and extend run on the GPU where it is faster (ops.Env.GPU),
+// as the title says throughout, holding at most gpuMemory of its memory.
 func Run(ctx context.Context, file string, gpu bool, gpuMemory ops.Budget) error {
 	m := newModel(ctx, file)
 	m.gpu, m.gpuMemory = gpu, gpuMemory
@@ -63,7 +63,7 @@ type model struct {
 
 	job     *job
 	confirm bool // asking whether to cancel the job
-	gpu     bool // seal and extend run on the GPU, set when the TUI starts
+	gpu     bool // seal and extend may run on the GPU; set when the TUI starts
 	spin    spinner.Model
 	// gpuMemory is the GPU memory budget given when the TUI starts.
 	gpuMemory ops.Budget

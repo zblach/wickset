@@ -12,6 +12,7 @@ import (
 	"slices"
 
 	"wickset/internal/argon2"
+	"wickset/internal/sha256iter"
 )
 
 // ErrUnknown reports an ALG_ID that is not defined in this build.
@@ -22,13 +23,13 @@ type ID byte
 
 // Defined algorithms. The values are wire format, fixed by SPEC.md §3:
 // append only, never reorder or remove. Each family has a short step and a
-// long one; README.md says how their parameters were chosen.
+// long one; docs/parameters.md says how their parameters were chosen.
 const (
 	_             ID = iota // 0x00 is never defined
 	Argon2idShort           // 0x01: Argon2id, 128 MiB, t = 5; SPEC.md §3.1
 	Argon2idLong            // 0x02: Argon2id, 128 MiB, t = 192; SPEC.md §3.2
-	SHA256Short             // 0x03: SHA-256 iterated K = 2^23 times; SPEC.md §3.3
-	SHA256Long              // 0x04: SHA-256 iterated K = 2^28 times; SPEC.md §3.4
+	SHA256Short             // 0x03: SHA-256 iterated K = 2^24 times; SPEC.md §3.3
+	SHA256Long              // 0x04: SHA-256 iterated K = 2^29 times; SPEC.md §3.4
 	idMax                   // one past the last defined id; not an algorithm
 )
 
@@ -140,9 +141,7 @@ func (c SHA256Iter) Run(ctx context.Context, h [32]byte, n uint64, report func(d
 			return h, err
 		}
 		m := min(n-done, chunk)
-		for range m {
-			h = sha256.Sum256(h[:])
-		}
+		h = sha256iter.Iterate(h, m) // as one core runs it fastest
 		done += m
 		if report != nil {
 			report(done)
@@ -239,16 +238,16 @@ type evaler interface {
 // functions.
 var registry = [idMax]Alg{
 	Argon2idShort: &argon2idAlg{id: Argon2idShort, name: "argon2id-m128M-t5-p1", params: argon2.Params{
-		Salt: []byte("wickset/v1::01"), MemoryKiB: 131072, Passes: 5, KeyLen: 32,
+		Salt: []byte("wickset/v1::0x01"), MemoryKiB: 131072, Passes: 5, KeyLen: 32,
 	}},
 	Argon2idLong: &argon2idAlg{id: Argon2idLong, name: "argon2id-m128M-t192-p1", params: argon2.Params{
-		Salt: []byte("wickset/v1::02"), MemoryKiB: 131072, Passes: 192, KeyLen: 32,
+		Salt: []byte("wickset/v1::0x02"), MemoryKiB: 131072, Passes: 192, KeyLen: 32,
 	}},
-	SHA256Short: &sha256Alg{id: SHA256Short, name: "sha256-iter-k23", iter: SHA256Iter{
-		Domain: []byte("wickset/v1::03"), K: 1 << 23,
+	SHA256Short: &sha256Alg{id: SHA256Short, name: "sha256-iter-k24", iter: SHA256Iter{
+		Domain: []byte("wickset/v1::0x03"), K: 1 << 24,
 	}},
-	SHA256Long: &sha256Alg{id: SHA256Long, name: "sha256-iter-k28", iter: SHA256Iter{
-		Domain: []byte("wickset/v1::04"), K: 1 << 28,
+	SHA256Long: &sha256Alg{id: SHA256Long, name: "sha256-iter-k29", iter: SHA256Iter{
+		Domain: []byte("wickset/v1::0x04"), K: 1 << 29,
 	}},
 }
 

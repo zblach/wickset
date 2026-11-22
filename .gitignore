@@ -2,7 +2,7 @@
 go.work
 go.work.sum
 
-# wickset files: wicks, partly burned wicks, archives, payloads, keys
+# wickset files: wicks, partly burned wicks, payloads, keys
 *.wick
 *.wick.*
 *.payload
@@ -10,3 +10,7 @@ go.work.sum
 # and the old names, for files sealed before the rename
 *.chainlock.tar
 *.lock
+# except the samples, sealed on purpose
+!examples/hello-0[1-4].txt.wick
+!examples/hello-0[1-4].txt.payload
+!examples/hello-01.key

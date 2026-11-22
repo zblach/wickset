@@ -1,0 +1,11 @@
+date,version,os,arch,cpu,cores,gpu,argon2,alg,step_s,step_timing,seal_on,at_once,seal_steps_per_s,speed_up
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,,x/crypto,argon2id-m128M-t5-p1,0.2148,"as libsodium runs it, 1.42× ours",cpu,10,13.59,2.92
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,,x/crypto,argon2id-m128M-t192-p1,9.059,"as libsodium runs it, 1.42× ours",cpu,10,0.3362,3.046
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,,x/crypto,sha256-iter-k24,0.3587,at this core's full SHA-256 rate,cpu,10,11.84,4.245
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,,x/crypto,sha256-iter-k29,11.57,at this core's full SHA-256 rate,cpu,10,0.3888,4.5
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,x/crypto,argon2id-m128M-t5-p1,0.2321,"as libsodium runs it, 1.42× ours",Apple M5,98,27.66,6.422
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,x/crypto,argon2id-m128M-t192-p1,8.951,"as libsodium runs it, 1.42× ours",Apple M5,98,1.36,12.17
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,x/crypto,sha256-iter-k24,0.3709,at this core's full SHA-256 rate,Apple M5,65536,56.67,21.02
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,x/crypto,sha256-iter-k29,11.93,at this core's full SHA-256 rate,Apple M5,65536,1.775,21.17
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,,libsodium 1.0.22,argon2id-m128M-t5-p1,0.2273,on libsodium 1.0.22,cpu,10,15.32,3.483
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,,libsodium 1.0.22,argon2id-m128M-t192-p1,8.389,on libsodium 1.0.22,cpu,10,0.5162,4.33

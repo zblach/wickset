@@ -42,6 +42,35 @@ func TestGPUFallsBack(t *testing.T) {
 	}
 }
 
+// TestGPUSooner: the GPU takes a run only where it finishes sooner: not one
+// long SHA-256 step, nor a few short ones, but tens of thousands of them; and
+// Argon2id from a few rounds of the workers on. The rates are an M5's: a
+// core 25 MH/s, one GPU thread 0.19 MH/s, the whole GPU ~1 GH/s.
+func TestGPUSooner(t *testing.T) {
+	gpu := func(n int) float64 { return min(float64(n)*190e3, 1.05e9) }
+	for _, c := range []struct {
+		name         string
+		steps, batch int
+		k            float64
+		want         bool
+	}{
+		{"one 0x04 step", 1, 131072, 1 << 29, false},
+		{"30 0x03 steps", 30, 131072, 1 << 24, false},
+		{"a 2-week 0x04 wick", 117_000, 131072, 1 << 29, true},
+		{"an 8-hour 0x03 wick", 88_000, 131072, 1 << 24, true},
+		{"over a batch", 300_000, 131072, 1 << 24, true},
+	} {
+		if got := gpuSooner(c.steps, 10, c.batch, c.k, 25e6, gpu); got != c.want {
+			t.Errorf("%s: GPU sooner %v, want %v", c.name, got, c.want)
+		}
+	}
+	argon, _ := alg.Lookup(alg.Argon2idShort)
+	b := &batcher{}
+	if b.faster(argon, 20, 10) || !b.faster(argon, 40, 10) {
+		t.Error("Argon2id: the GPU should take 40 steps on 10 workers and not 20")
+	}
+}
+
 // TestBudget: a GPU memory budget is a size in binary units or a share of
 // the GPU's memory, half by default.
 func TestBudget(t *testing.T) {

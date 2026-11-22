@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"charm.land/lipgloss/v2"
@@ -18,15 +19,14 @@ real delay is hardware-relative: bench on the slowest legitimate solver, and
 expect an attacker to be faster.`
 
 type sealCmd struct {
-	File    string    `arg:"" type:"existingfile" help:"Plaintext to seal."`
-	Alg     algFlag   `help:"Algorithm id or name: ${algs}. Required with -n; with --delay, chosen by it if not given."`
+	File    string    `arg:"" type:"existingfile" predictor:"file" help:"Plaintext to seal."`
+	Alg     algFlag   `predictor:"alg" help:"Algorithm id or name: ${algs}. Required with -n; with --delay, chosen by it if not given."`
 	N       *int      `name:"n" short:"n" xor:"steps" placeholder:"N" help:"N >= 0: the solver performs N+1 sequential steps."`
 	Delay   delayFlag `short:"d" xor:"steps" placeholder:"DELAY" help:"Instead of -n: a target delay on this machine, such as 8h, 3d, 2w, 6M (months; m is minutes), 1y or \"1w 3d\"."`
-	Raw     bool      `xor:"form" help:"Write the bare SPEC.md wick, with no header or digest."`
-	Archive bool      `xor:"form,wickout,payloadout" help:"Write wick and payload together as FILE.wick.tar."`
-	Wick    string    `xor:"wickout" type:"path" placeholder:"PATH" help:"Wick output (default FILE.wick)."`
-	Payload string    `xor:"payloadout" type:"path" placeholder:"PATH" help:"Payload output (default FILE.payload)."`
-	KeyOut  string    `placeholder:"PATH" help:"Also save the key, which opens the payload without solving ('-' for stdout)."`
+	Raw     bool      `help:"Write the bare SPEC.md wick, with no header or digest."`
+	Wick    string    `type:"outfile" predictor:"file" placeholder:"PATH" help:"Wick output (default FILE.wick)."`
+	Payload string    `type:"outfile" predictor:"file" placeholder:"PATH" help:"Payload output (default FILE.payload)."`
+	KeyOut  string    `type:"keyfile" predictor:"file" placeholder:"PATH" help:"Also save the key, which opens the payload without solving ('-' for stdout)."`
 	workersFlag
 }
 
@@ -39,7 +39,7 @@ func (*sealCmd) Help() string {
 		"one line: keep it apart from the wick and payload.\n\n" +
 		"Each family has a short step and a long one (a smaller wick for the same\n" +
 		"delay): 0x01/0x02 Argon2id, memory-hard; 0x03/0x04 iterated SHA-256, which\n" +
-		"seals far faster on a GPU. README.md compares them. Without --alg, --delay\n" +
+		"seals far faster on a GPU (docs/parameters.md). Without --alg, --delay\n" +
 		"chooses the short step below a day and the long one from a day up: SHA-256\n" +
 		"on the GPU, Argon2id on the CPU (--cpu, or no GPU). -n counts steps of one\n" +
 		"algorithm, so it needs --alg.\n\n" + delayHelp
@@ -66,31 +66,36 @@ func (c *sealCmd) Run(ctx context.Context, env *ops.Env) error {
 	if c.N != nil {
 		a.N = *c.N
 	}
-	switch {
-	case c.Raw:
+	if c.Raw {
 		a.Form = store.FormRaw
-	case c.Archive:
-		a.Form = store.FormArchive
 	}
 	return env.Seal(ctx, a)
 }
 
 type openCmd struct {
-	File    string `arg:"" name:"wick" type:"existingfile" help:"FILE.wick, or FILE.wick.tar with its payload inside."`
-	Payload string `type:"existingfile" placeholder:"PATH" help:"Payload to decrypt (default FILE.payload; not with an archive)."`
-	Out     string `type:"path" placeholder:"PATH" help:"Plaintext output, replaced if present (default FILE, which must not exist)."`
-	KeyOut  string `placeholder:"PATH" help:"Also save the key that solving recovers, to reopen later with bypass ('-' for stdout)."`
+	File    string `arg:"" name:"file" type:"existingfile" predictor:"either" help:"FILE.wick or FILE.payload: either names the pair."`
+	Wick    string `type:"existingfile" predictor:"wick" placeholder:"PATH" help:"Wick to burn, when FILE is a payload (default FILE.wick)."`
+	Payload string `type:"existingfile" predictor:"payload" placeholder:"PATH" help:"Payload to decrypt, when FILE is a wick (default FILE.payload)."`
+	Out     string `type:"outfile" predictor:"file" placeholder:"PATH" help:"Plaintext output, replaced if present (default FILE, which must not exist); /dev/null checks it opens."`
+	KeyOut  string `type:"keyfile" predictor:"file" placeholder:"PATH" help:"Also save the key that solving recovers, to reopen later with bypass ('-' for stdout)."`
+}
+
+// Validate names the pair, so a missing wick is a usage error before any
+// work; ops checks it again, for every front end.
+func (c *openCmd) Validate() error {
+	_, _, err := store.Pair(c.File, c.Wick, c.Payload)
+	return err
 }
 
 func (c *openCmd) Run(ctx context.Context, env *ops.Env) error {
-	return env.Open(ctx, ops.OpenArgs{File: c.File, Payload: c.Payload, Out: c.Out, KeyOut: c.KeyOut})
+	return env.Open(ctx, ops.OpenArgs{File: c.File, Wick: c.Wick, Payload: c.Payload, Out: c.Out, KeyOut: c.KeyOut})
 }
 
 type bypassCmd struct {
-	File    string `arg:"" name:"file" type:"existingfile" help:"FILE.payload, or a wick (FILE.wick, FILE.wick.tar) to take the payload from."`
-	Key     string `required:"" placeholder:"PATH" help:"Key file from seal or open --key-out; '-' reads standard input."`
-	Payload string `type:"existingfile" placeholder:"PATH" help:"Payload, when FILE is a wick (default FILE.payload; not with an archive)."`
-	Out     string `type:"path" placeholder:"PATH" help:"Plaintext output, replaced if present (default FILE, which must not exist)."`
+	File    string `arg:"" name:"file" type:"existingfile" predictor:"either" help:"FILE.payload, or its wick FILE.wick to find the payload by."`
+	Key     string `required:"" predictor:"key" placeholder:"PATH" help:"Key file from seal or open --key-out; '-' reads standard input."`
+	Payload string `type:"existingfile" predictor:"payload" placeholder:"PATH" help:"Payload, when FILE is a wick (default FILE.payload)."`
+	Out     string `type:"outfile" predictor:"file" placeholder:"PATH" help:"Plaintext output, replaced if present (default FILE, which must not exist)."`
 }
 
 func (*bypassCmd) Help() string {
@@ -106,10 +111,10 @@ func (c *bypassCmd) Run(env *ops.Env) error {
 }
 
 type extendCmd struct {
-	File  string    `arg:"" name:"wick" type:"existingfile" help:"Wick to extend, in any form; it is written back in the same form."`
+	File  string    `arg:"" name:"wick" type:"existingfile" predictor:"wick" help:"Wick to extend, in any form; it is written back in the same form."`
 	Add   int       `short:"a" xor:"steps" placeholder:"K" help:"K >= 1 sequential steps to add."`
 	Delay delayFlag `short:"d" xor:"steps" placeholder:"DELAY" help:"Instead of --add: delay to add on this machine, as for seal: 2h, 1w, 1M."`
-	Out   string    `type:"path" placeholder:"PATH" help:"Write the extended wick here, a new file, instead of replacing FILE.wick."`
+	Out   string    `type:"outfile" predictor:"file" placeholder:"PATH" help:"Write the extended wick here, a new file, instead of replacing FILE.wick."`
 	workersFlag
 }
 
@@ -126,7 +131,7 @@ func (c *extendCmd) Validate() error {
 	if c.Add == 0 && c.Delay == 0 {
 		return errors.New("give --add or --delay")
 	}
-	return nil
+	return store.NotPayload(c.File, "extend")
 }
 
 func (c *extendCmd) Run(ctx context.Context, env *ops.Env) error {
@@ -134,7 +139,13 @@ func (c *extendCmd) Run(ctx context.Context, env *ops.Env) error {
 }
 
 type infoCmd struct {
-	File string `arg:"" name:"wick" type:"existingfile" help:"Wick to describe, in any form."`
+	File string `arg:"" name:"file" type:"existingfile" predictor:"either" help:"Wick to describe, in any form, or its payload."`
+}
+
+// Validate names the pair before anything is read in full.
+func (c *infoCmd) Validate() error {
+	_, _, err := store.Pair(c.File, "", "")
+	return err
 }
 
 // Run describes the wick and checks its payload, as open would before
@@ -149,7 +160,7 @@ func (c *infoCmd) Run() error {
 	case in.PayloadMissing():
 		payload = "not found"
 	case in.PayloadErr != nil:
-		payload = in.PayloadErr.Error()
+		payload = unprefixed(in.PayloadErr).Error()
 	}
 	lipgloss.Println(tui.Columns(tui.KeyColumn).Rows(
 		[]string{"alg", fmt.Sprintf("%v (B = %d)", in.Alg.ID(), in.Alg.BlockSize())},
@@ -165,7 +176,8 @@ func (c *infoCmd) Run() error {
 }
 
 type benchCmd struct {
-	Alg algFlag `default:"1" help:"Algorithm id or name: ${algs}."`
+	Alg algFlag `default:"1" predictor:"alg" help:"Algorithm id or name: ${algs}."`
+	CSV bool    `name:"csv" help:"Print a row for benchmarks/scores.csv, with its header, instead of the table."`
 }
 
 func (c *benchCmd) Run(ctx context.Context, env *ops.Env) error {
@@ -173,14 +185,17 @@ func (c *benchCmd) Run(ctx context.Context, env *ops.Env) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%v: %v a step on one core (fastest of 3)\n\n", b.Alg.ID(), b.Step.Round(time.Millisecond))
+	if c.CSV {
+		return writeBenchCSV(os.Stdout, b, env.GPU)
+	}
+	fmt.Printf("%v: %v a step on one core %s\n\n", b.Alg.ID(), b.Step.Round(time.Millisecond), b.StepNote())
 	lipgloss.Println(tui.BenchTable(b))
 	fmt.Printf("\n%s\n%s\n", b.SpeedUpLine(), b.Sealing())
 	return nil
 }
 
 type tuiCmd struct {
-	File string `arg:"" optional:"" help:"File to start with: a plaintext to seal, or a wick or payload to open."`
+	File string `arg:"" optional:"" predictor:"file" help:"File to start with: a plaintext to seal, or a wick or payload to open."`
 }
 
 func (c *tuiCmd) Run(ctx context.Context, env *ops.Env) error {

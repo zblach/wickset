@@ -15,25 +15,14 @@ import (
 	"wickset/wick"
 )
 
-// TestSealWithGPU seals real short-step wicks on the GPU, then opens them on
-// the CPU, as any solver would: the GPU's steps are exactly the CPU's, or the
-// plaintext never comes back. Iterated SHA-256, ~45 s of one GPU thread a
-// step, runs without -short.
+// TestSealWithGPU seals a real 0x01 wick through Seal, which puts its 60
+// steps on the GPU (many more than 2 workers' worth), then opens it on the
+// CPU, as any solver would: the GPU's steps are exactly the CPU's, or the
+// plaintext never comes back.
 func TestSealWithGPU(t *testing.T) {
-	for _, id := range []alg.ID{alg.Argon2idShort, alg.SHA256Short} {
-		t.Run(id.String(), func(t *testing.T) {
-			if testing.Short() && id == alg.SHA256Short {
-				t.Skip("~45 s a step on the GPU: skipped with -short")
-			}
-			sealWithGPU(t, id)
-		})
-	}
-}
-
-func sealWithGPU(t *testing.T, id alg.ID) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "plain")
-	plaintext := []byte("sealed partly on the GPU")
+	plaintext := []byte("sealed on the GPU")
 	if err := os.WriteFile(file, plaintext, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -46,29 +35,55 @@ func sealWithGPU(t *testing.T, id alg.ID) {
 				workers[ev.Step.Worker] = true
 			}
 		},
+		GPU: true,
 	}
-	a, _ := alg.Lookup(id)
+	a, _ := alg.Lookup(alg.Argon2idShort)
 	start := time.Now()
-	e.GPU = true
 	if err := e.Seal(t.Context(), SealArgs{File: file, Alg: a, N: 59, Workers: 2}); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("sealed 60 steps in %v", time.Since(start).Round(time.Millisecond))
-	if !strings.Contains(strings.Join(notes, "\n"), "the GPU computes the steps") {
+	if !strings.Contains(strings.Join(notes, "\n"), "sealing on the "+GPUName()+" GPU") {
 		t.Fatalf("no GPU note:\n%s", strings.Join(notes, "\n"))
 	}
 	if len(workers) != 1 || !workers[0] {
 		t.Fatalf("the GPU is the one worker, 0; started: %v", workers)
 	}
-	if err := os.Remove(file); err != nil {
-		t.Fatal(err)
-	}
-	start = time.Now()
+	os.Remove(file)
 	if err := (&Env{}).Open(t.Context(), OpenArgs{File: file + store.WickSuffix}); err != nil {
 		t.Fatalf("the GPU-sealed wick does not open on the CPU: %v", err)
 	}
-	t.Logf("opened 60 steps on one core in %v", time.Since(start).Round(time.Millisecond))
 	if got, _ := os.ReadFile(file); !bytes.Equal(got, plaintext) {
 		t.Fatalf("opened to %q", got)
+	}
+}
+
+// TestSHA256OnGPU: a few SHA-256 steps go to the CPU, being far quicker
+// there; and the GPU's steps, built on it directly, burn on the CPU to the
+// same secret. One GPU thread takes ~45 s a 0x03 step: without -short only.
+func TestSHA256OnGPU(t *testing.T) {
+	a, _ := alg.Lookup(alg.SHA256Short)
+	var notes []string
+	e := &Env{Note: func(n Note) { notes = append(notes, n.String()) }, GPU: true}
+	b, _, err := e.gpuBatcher(a)
+	if err != nil || b == nil {
+		t.Fatalf("no GPU batcher: %v %q", err, notes)
+	}
+	if o := e.place(a, wick.Opts{Workers: 2}, b, 30); o.Batcher != nil || !strings.Contains(strings.Join(notes, "\n"), "too few to fill the GPU") {
+		t.Fatalf("30 steps went to the GPU: %q", notes)
+	}
+	if testing.Short() {
+		t.Skip("~45 s of one GPU thread a step: skipped with -short")
+	}
+	raw, key, err := wick.New(t.Context(), a.ID(), 2, wick.Opts{Batcher: b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := wick.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if solved, err := wick.Solve(t.Context(), o, nil); err != nil || !bytes.Equal(solved, key) {
+		t.Fatalf("the GPU's wick burns on the CPU to a different key (%v)", err)
 	}
 }

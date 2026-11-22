@@ -1,0 +1,63 @@
+# Tests and benchmarks on GitHub's runners: real x86_64 and arm64 hardware,
+# where the vendored amd64 SHA-256 routines (SHA-NI, AVX2) run natively, and
+# a measure of libsodium's Argon2id lead over x/crypto on each. The CSV rows
+# are benchmarks/scores.csv's; add them there by hand.
+name: test and bench
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags, so the build knows its version
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: libsodium
+        run: sudo apt-get update && sudo apt-get install -y libsodium-dev
+
+      - name: machine
+        run: |
+          { echo '### ${{ matrix.runner }}'; echo '```'; lscpu | grep -E 'Model name|^CPU\(s\)|Flags' | cut -c1-400; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: SHA-256 routines
+        run: |
+          go test -count=1 -v -run 'TestEachRoutine|TestMatchesStdlib|TestFaster' ./internal/sha256iter | tee sha.txt
+          { echo '```'; grep -E -- '---|accelerated|M/s|cannot' sha.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: test
+        run: |
+          go vet ./...
+          go test -count=1 ./...
+          go test -count=1 -tags wickset_testalgs ./...
+          go test -count=1 -short -tags libsodium ./...
+          CGO_ENABLED=0 go test -count=1 -short ./...
+
+      - name: bench
+        run: |
+          go build -o wickset-go ./cmd/wickset
+          go build -tags libsodium -o wickset-sodium ./cmd/wickset
+          ./wickset-go --version
+          {
+            for a in 1 2 3 4; do ./wickset-go --cpu bench --csv --alg "$a"; done
+            for a in 1 2; do ./wickset-sodium --cpu bench --csv --alg "$a"; done
+          } | awk 'NR==1 || !/^date,/' > scores.csv
+          { echo '```csv'; cat scores.csv; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scores-${{ matrix.runner }}
+          path: scores.csv

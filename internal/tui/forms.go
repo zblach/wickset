@@ -47,7 +47,7 @@ func newForm(act action, in *inputs, page int) *huh.Form {
 	algorithm := huh.NewSelect[alg.ID]().Title("Algorithm").Options(algOptions()...).Value(&in.Alg)
 	workers := huh.NewInput().Title("Workers").Value(&in.Workers).Validate(workersValidator).Placeholder("0").CharLimit(4).
 		Description(fmt.Sprintf("Steps on the CPU at once; on a GPU, used if it fails. 0 or -1: one per core (%d).", cores))
-	wickFile := "A .wick file (with its .payload next to it), or a .wick.tar."
+	pair := "A .wick file or its .payload: either finds the other beside it."
 
 	var fields []huh.Field
 	switch {
@@ -67,20 +67,19 @@ func newForm(act action, in *inputs, page int) *huh.Form {
 			algorithm.Description(algReason(in)),
 			huh.NewSelect[store.Form]().Title("Save as").Value(&in.Form).Options(
 				huh.NewOption(fmt.Sprintf("two files     %s and %s", name+store.WickSuffix, name+store.PayloadSuffix), store.FormFile),
-				huh.NewOption("one archive   "+name+store.ArchiveSuffix, store.FormArchive),
 				huh.NewOption("raw files     no damage check", store.FormRaw),
 			),
 			workers, keyOut,
 		}
 	case act == actOpen:
 		fields = []huh.Field{
-			file("Wick", wickFile),
+			file("Wick", pair),
 			out,
 			keyOut.Description("Optional. Saves the key, so you can open it again later with no wait."),
 		}
 	case act == actExtend:
 		fields = []huh.Field{
-			file("Wick", wickFile),
+			file("Wick", "A .wick file. Its payload never changes."),
 			huh.NewInput().Title("Add").Value(&in.Steps).Validate(stepsValidator(1)).
 				Description("How much longer opening it should take, such as 2h or 1w.\n" +
 					"Or an exact number of steps."),
@@ -90,13 +89,13 @@ func newForm(act action, in *inputs, page int) *huh.Form {
 		}
 	case act == actBypass:
 		fields = []huh.Field{
-			file("Encrypted file", "A .payload file, or its .wick or .wick.tar."),
+			file("Encrypted file", "A .payload file, or its .wick."),
 			huh.NewInput().Key(pathField).Title("Key file").Value(&in.Key).Validate(keyPath(true)).
 				Description("The key saved earlier by Seal or Open."),
 			out,
 		}
 	case act == actInfo:
-		fields = []huh.Field{file("Wick", wickFile)}
+		fields = []huh.Field{file("Wick", pair)}
 	case act == actBench:
 		fields = []huh.Field{algorithm}
 	}
@@ -191,12 +190,11 @@ on a GPU with SHA-256.`
 
   A long step means fewer steps for the same delay, so a smaller wick
   file. Suggested: the long step from %v up; SHA-256 with the GPU,
-  Argon2id without. Bench shows what a step takes here; README.md
-  compares them.
+  Argon2id without. Bench shows what a step takes here;
+  docs/parameters.md compares them.
 
 Save as
   two files     the wick and the encrypted file; damage is caught early
-  one archive   the same two files, in one tar
   raw files     the bare wick (SPEC.md), with no damage check
 
 Workers   steps computed at once on the CPU, each holding the

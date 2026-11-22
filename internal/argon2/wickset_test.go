@@ -38,7 +38,8 @@ func TestVendored(t *testing.T) {
 
 // TestMatchesXCrypto: this copy is x/crypto's Argon2id, with or without a
 // context, over parameters that cover both addressing modes and memory
-// rounding.
+// rounding. The salts are 16 bytes, so with -tags libsodium, Params.Key is
+// libsodium's, held here to x/crypto's too.
 func TestMatchesXCrypto(t *testing.T) {
 	for _, c := range []struct{ mem, passes, keyLen uint32 }{{8, 1, 32}, {9, 2, 32}, {64, 3, 16}, {1024, 2, 64}} {
 		in, salt := make([]byte, 32), make([]byte, 16)

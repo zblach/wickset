@@ -160,6 +160,7 @@ func renderResult(r *result) string {
 // where a different choice would help; here those are form fields.
 func plainError(err error) string {
 	return strings.NewReplacer(
+		"wickset: ", "", // a library's prefix; the TUI is wickset's own
 		"give --out to choose where the plaintext goes", `choose another name under "Save as"`,
 		"give --out", `fill in "Save as"`,
 	).Replace(err.Error())
@@ -191,9 +192,8 @@ func notesView(notes []ops.Note) string {
 // storedAs says how a wick is stored, in the seal form's words.
 func storedAs(f store.Form) string {
 	return [...]string{
-		store.FormFile:    "two files, damage check passed",
-		store.FormRaw:     "raw files, no damage check",
-		store.FormArchive: "one archive, damage check passed",
+		store.FormFile: "two files, damage check passed",
+		store.FormRaw:  "raw files, no damage check",
 	}[f]
 }
 
@@ -203,7 +203,7 @@ func infoView(in *ops.Info) string {
 	case in.PayloadMissing():
 		encrypted = subtleStyle.Render("not found")
 	case in.PayloadErr != nil:
-		encrypted = badStyle.Render(in.PayloadErr.Error())
+		encrypted = badStyle.Render(plainError(in.PayloadErr))
 	}
 	return Columns(KeyColumn).Rows(
 		[]string{"Algorithm", in.Alg.ID().String()},
@@ -217,7 +217,7 @@ func infoView(in *ops.Info) string {
 func benchView(b ops.Bench) string {
 	return strings.Join([]string{
 		fmt.Sprintf("%v: %s a step on one core %s", b.Alg.ID(),
-			headStyle.Render(b.Step.Round(time.Millisecond).String()), subtleStyle.Render("(fastest of 3)")),
+			headStyle.Render(b.Step.Round(time.Millisecond).String()), subtleStyle.Render(b.StepNote())),
 		"",
 		BenchTable(b).String(),
 		"",

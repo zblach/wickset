@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/alecthomas/kong"
+	"github.com/willabides/kongplete"
 
 	"wickset/internal/ops"
 )
@@ -27,7 +29,11 @@ type cli struct {
 	Bench  benchCmd  `cmd:"" help:"Time this machine to see how long wicks take."`
 	TUI    tuiCmd    `cmd:"" name:"tui" help:"Do any of the above interactively."`
 
-	CPU       bool       `name:"cpu" help:"Seal and extend on CPU workers. Without it they run on the GPU where there is one (macOS: Metal), one step of each batch checked on the CPU."`
+	Completion completionCmd `cmd:"" help:"Print what makes a shell complete wickset's commands and files."`
+
+	Version versionFlag `help:"Print the version and what this build can do, and exit."`
+
+	CPU       bool       `name:"cpu" help:"Seal and extend on CPU workers. Without it they run on the GPU (macOS: Metal) where it is faster for the run, one step of each batch checked on the CPU; a few steps are faster on the CPU."`
 	GPUMemory budgetFlag `name:"gpu-memory" placeholder:"SIZE" help:"GPU memory Argon2id batches may hold: a size such as 8G, or a share such as 25% (default 50% of what the GPU may use)."`
 }
 
@@ -45,11 +51,13 @@ func Main() {
 	term := newTerminal()
 	env := term.env()
 	var c cli
-	k := kong.Parse(&c,
+	parser := kong.Must(&c,
 		kong.Name("wickset"),
 		kong.Description("Encrypt a file so it can be opened only after a delay (SPEC.md)."),
 		kong.Vars{"algs": algList()},
 		kong.UsageOnError(),
+		kong.NamedMapper("outfile", outputMapper(false)),
+		kong.NamedMapper("keyfile", outputMapper(true)),
 		kong.BindTo(ctx, (*context.Context)(nil)),
 		kong.Bind(env),
 		kong.Exit(func(code int) {
@@ -60,11 +68,31 @@ func Main() {
 			os.Exit(code)
 		}),
 	)
+	// A shell asking for completions (completionCmd) is answered here, and
+	// the process exits; any other run goes on.
+	kongplete.Complete(parser, kongplete.WithPredictors(predictors()))
+	k, err := parser.Parse(os.Args[1:])
+	parser.FatalIfErrorf(unprefixed(err))
 	// The GPU is the program's, for whatever it does: used wherever there is
 	// one, unless asked for the CPU.
 	env.GPU = !c.CPU && ops.GPUName() != ""
 	env.GPUMemory = ops.Budget(c.GPUMemory)
-	err := k.Run()
+	err = k.Run()
 	term.close() // a cancelled run leaves its line open
-	k.FatalIfErrorf(err)
+	k.FatalIfErrorf(unprefixed(err))
 }
+
+// unprefixed is err without the "wickset: " its package errors carry for a
+// library's callers: the CLI already says whose error it is. It unwraps to
+// err, so kong still finds a usage error in it.
+func unprefixed(err error) error {
+	if err == nil {
+		return nil
+	}
+	return prefixless{err}
+}
+
+type prefixless struct{ error }
+
+func (p prefixless) Error() string { return strings.ReplaceAll(p.error.Error(), "wickset: ", "") }
+func (p prefixless) Unwrap() error { return p.error }

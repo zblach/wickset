@@ -21,7 +21,22 @@ func (e *Env) checkKeyOut(path string) error {
 		}
 		return nil
 	}
-	return store.Absent(path) // an existing key file may be another wick's only shortcut
+	if err := store.Absent(path); err != nil { // an existing key file may be another wick's only shortcut
+		return err
+	}
+	return store.CheckOutput(path)
+}
+
+// checkOutputs refuses, before anything slow is done, any path an
+// operation's output could not be written to (store.CheckOutput): finding
+// out after the delay would waste it.
+func checkOutputs(paths ...string) error {
+	for _, p := range paths {
+		if err := store.CheckOutput(p); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // writeKey saves key to path, to Stdout for "-", or nowhere for "".

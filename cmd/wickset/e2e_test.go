@@ -8,12 +8,10 @@
 package main
 
 import (
-	"archive/tar"
 	"bytes"
 	"crypto/rand"
+	"encoding/csv"
 	"fmt"
-	"io"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -198,66 +196,48 @@ func TestSealByDelay(t *testing.T) {
 
 	// Without --alg, a delay chooses: under a day on the CPU, 0x01 (real,
 	// so this costs four ~0.3 s steps: three to measure, one to seal).
-	r := mustRun(t, "--cpu", "seal", "-d", "1ms", "--archive", plain)
+	r := mustRun(t, "--cpu", "seal", "-d", "1ms", "--wick", plain+".auto.wick", "--payload", plain+".auto.payload", plain)
 	if !strings.Contains(r.stderr, "algorithm 0x01") || !strings.Contains(r.stderr, "measuring") {
 		t.Fatalf("auto choice or measuring not reported:\n%s", r.stderr)
 	}
-	wantInfo(t, plain+".wick.tar", "alg", "0x01 (argon2id-m128M-t5-p1) (B = 32)")
+	wantInfo(t, plain+".auto.wick", "alg", "0x01 (argon2id-m128M-t5-p1) (B = 32)")
 }
 
-// TestArchive: seal --archive writes one tar holding the usual pair, which
-// info, extend and open use directly, and whose members also work extracted.
-func TestArchive(t *testing.T) {
+// TestEitherFile: open and info take either file of a pair and find the
+// other by name, or by --wick and --payload; extend takes only the wick. A
+// payload whose wick is missing is a usage error, before any work.
+func TestEitherFile(t *testing.T) {
 	dir := t.TempDir()
 	p := func(name string) string { return filepath.Join(dir, name) }
 	plain, pt := writePlain(t, dir, "plain")
-	mustRun(t, "seal", "--alg", "0xFE", "-n", "20", "--archive", plain)
-	if names, want := dirNames(t, dir), []string{"plain", "plain.wick.tar"}; !slices.Equal(names, want) {
-		t.Fatalf("directory holds %v, want %v", names, want)
-	}
-	arc := p("plain.wick.tar")
-	wantInfo(t, arc, "form", "archive v1, wick digest ok")
-	wantInfo(t, arc, "payload", "in archive: pairs with this wick, digest ok")
-
-	mustRun(t, "extend", "-a", "5", arc)
-	wantInfo(t, arc, "N", "25 (26 sequential steps)")
-
-	// Members: exactly the pair, anonymous (CONTAINER.md §4).
-	members := map[string][]byte{}
-	tr := tar.NewReader(bytes.NewReader(readFile(t, arc)))
-	for {
-		h, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		if h.Mode != 0o600 || h.Uid != 0 || h.Gid != 0 || h.Uname != "" || h.Gname != "" || h.ModTime.Unix() != 0 {
-			t.Errorf("%s: header leaks metadata: mode %o uid %d gid %d %q/%q mtime %v",
-				h.Name, h.Mode, h.Uid, h.Gid, h.Uname, h.Gname, h.ModTime)
-		}
-		members[h.Name], _ = io.ReadAll(tr)
-	}
-	if len(members) != 2 || members["plain.wick"] == nil || members["plain.payload"] == nil {
-		t.Fatalf("members %v, want plain.wick and plain.payload", slices.Sorted(maps.Keys(members)))
-	}
-
-	wantFail(t, 1, "already exists", "open", arc)
-	wantFail(t, 1, "holds its own payload", "open", "--payload", arc, "--out", p("x"), arc)
+	mustRun(t, "seal", "--alg", "0xFE", "-n", "20", plain)
 	os.Remove(plain)
-	mustRun(t, "open", arc)
+
+	wantInfo(t, p("plain.payload"), "N", "20 (21 sequential steps)")
+	mustRun(t, "open", p("plain.payload"))
 	wantFile(t, plain, pt)
 
-	// Extracted, the members are an ordinary pair, already extended.
-	sub := p("x")
-	os.Mkdir(sub, 0o700)
-	for name, data := range members {
-		os.WriteFile(filepath.Join(sub, name), data, 0o600)
+	wantFail(t, 2, "plain.payload is a payload; extend works on its wick", "extend", "-a", "1", p("plain.payload"))
+	// A file is one end of the pair; a flag for that same end is a conflict.
+	other, _ := writePlain(t, dir, "other")
+	mustRun(t, "seal", "--alg", "0xFE", "-n", "0", other)
+	wantFail(t, 2, "drop --wick", "open", "--wick", other+".wick", "--out", p("x"), p("plain.wick"))
+	wantFail(t, 2, "drop --payload", "open", "--payload", other+".payload", "--out", p("x"), p("plain.payload"))
+	wantFail(t, 1, "this is a payload file, not a wick", "open", "--wick", other+".payload", "--out", p("x"), p("plain.payload"))
+
+	// Renamed apart, the pair is named by flag, from either end.
+	os.Rename(p("plain.wick"), p("burn-me"))
+	wantFail(t, 2, "its wick "+p("plain.wick")+" is not there; give it with --wick", "open", "--out", p("x"), p("plain.payload"))
+	mustRun(t, "open", "--wick", p("burn-me"), "--out", p("by-wick"), p("plain.payload"))
+	wantFile(t, p("by-wick"), pt)
+	mustRun(t, "open", "--payload", p("plain.payload"), "--out", p("by-payload"), p("burn-me"))
+	wantFile(t, p("by-payload"), pt)
+
+	// A library error's own "wickset: " is not said twice.
+	os.WriteFile(p("junk"), []byte("not a wick"), 0o600)
+	if r := run(t, "info", p("junk")); r.code != 1 || strings.Count(r.stderr, "wickset:") != 1 {
+		t.Errorf("exit %d:\n%s", r.code, r.stderr)
 	}
-	wantInfo(t, filepath.Join(sub, "plain.wick"), "N", "25 (26 sequential steps)")
-	mustRun(t, "open", filepath.Join(sub, "plain.wick"))
-	wantFile(t, filepath.Join(sub, "plain"), pt)
 }
 
 // TestRaw: --raw writes the bare SPEC.md wick, and extend keeps it raw.
@@ -305,7 +285,6 @@ func TestDamage(t *testing.T) {
 		{"corrupt wick", "bad.wick", "a.payload", "wick file digest mismatch"},
 		{"corrupt payload", "a.wick", "bad.payload", "payload file digest mismatch"},
 		{"mismatched pair", "a.wick", "b.payload", "payload belongs to a different wick"},
-		{"payload as wick", "a.payload", "a.payload", "this is a payload file, not a wick"},
 		{"corrupt raw wick", "badraw.wick", "r.payload", "payload authentication failed"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -332,7 +311,7 @@ func TestDamage(t *testing.T) {
 
 // TestKeyBypass: the key saved by seal --key-out, or by open --key-out after
 // burning, opens the payload with bypass, with no burning and however far the
-// wick has been extended: from the payload alone, via its wick or archive,
+// wick has been extended: from the payload alone or via its wick,
 // from a file or standard input.
 func TestKeyBypass(t *testing.T) {
 	dir := t.TempDir()
@@ -371,19 +350,12 @@ func TestKeyBypass(t *testing.T) {
 		t.Fatalf("open --key-out - printed %q, want the key", r.stdout)
 	}
 
-	// An archive works the same way.
-	arc, arcPT := writePlain(t, dir, "arc")
-	mustRun(t, "seal", "--alg", "0xFE", "-n", "5", "--archive", "--key-out", p("ka"), arc)
-	mustRun(t, "bypass", "--key", p("ka"), "--out", p("from-archive"), arc+".wick.tar")
-	wantFile(t, p("from-archive"), arcPT)
-
 	// Failures: wrong key, a wick that is not the payload's, a bad key file,
 	// no key at all. A key file others can read is used, with a warning.
-	wantFail(t, 1, "wrong key for this payload", "bypass", "--key", p("ka"), "--out", p("x"), p("plain.payload"))
 	other, _ := writePlain(t, dir, "other")
-	mustRun(t, "seal", "--alg", "0xFE", "-n", "5", other)
+	mustRun(t, "seal", "--alg", "0xFE", "-n", "5", "--key-out", p("ko"), other)
+	wantFail(t, 1, "wrong key for this payload", "bypass", "--key", p("ko"), "--out", p("x"), p("plain.payload"))
 	wantFail(t, 1, "payload belongs to a different wick", "bypass", "--key", p("k"), "--payload", p("plain.payload"), "--out", p("x"), other+".wick")
-	wantFail(t, 1, "holds its own payload", "bypass", "--key", p("ka"), "--payload", p("plain.payload"), "--out", p("x"), arc+".wick.tar")
 	os.WriteFile(p("bad-key"), []byte("hunter2\n"), 0o600)
 	wantFail(t, 1, "malformed key", "bypass", "--key", p("bad-key"), "--out", p("x"), p("plain.payload"))
 	wantFail(t, 2, "missing flags: --key", "bypass", p("plain.payload"))
@@ -420,23 +392,28 @@ func TestUsage(t *testing.T) {
 	wantFail(t, 1, wick+" already exists", "seal", "--alg", "0xFE", "-n", "0", plain)
 	key := filepath.Join(dir, "k")
 	os.WriteFile(key, []byte("someone's key"), 0o600)
-	wantFail(t, 1, key+" already exists", "seal", "--alg", "0xFE", "-n", "0", "--archive", "--key-out", key, plain)
+	wantFail(t, 1, key+" already exists", "seal", "--alg", "0xFE", "-n", "0", "--wick", filepath.Join(dir, "w2"), "--payload", filepath.Join(dir, "p2"), "--key-out", key, plain)
 	wantFail(t, 1, key+" already exists", "open", "--out", filepath.Join(dir, "o"), "--key-out", key, wick)
 	wantFail(t, 1, key+" already exists", "extend", "-a", "1", "--out", key, wick)
-	if names := dirNames(t, dir); slices.Contains(names, "plain.wick.tar") || slices.Contains(names, "o") {
+	if names := dirNames(t, dir); slices.Contains(names, "w2") || slices.Contains(names, "o") {
 		t.Fatalf("a refused command wrote files: %v", names)
 	}
 
 	wantFail(t, 2, "give -n or --delay", "seal", plain)
 	wantFail(t, 2, "-n needs --alg", "seal", "-n", "1", plain)
 	wantFail(t, 2, "can't be used together", "seal", "--alg", "0xFE", "-n", "1", "-d", "1s", plain)
-	wantFail(t, 2, "--raw and --archive can't be used together", "seal", "--alg", "0xFE", "-n", "1", "--raw", "--archive", plain)
-	wantFail(t, 2, "--archive and --wick can't be used together", "seal", "--alg", "0xFE", "-n", "1", "--archive", "--wick", wick, plain)
 	wantFail(t, 2, "give --add or --delay", "extend", wick)
 	wantFail(t, 2, "Usage: wickset seal", "seal")
 	wantFail(t, 2, "no such file", "info", filepath.Join(dir, "missing.wick"))
 	wantFail(t, 2, "unexpected argument frob", "frob")
 	wantFail(t, 2, "--gpu-memory", "--gpu-memory", "lots", "seal", "--alg", "0xFE", "-n", "1", plain)
+
+	// Outputs that cannot be written are usage errors, before any work.
+	missing := filepath.Join(dir, "missing", "x")
+	wantFail(t, 2, "--out: cannot write", "open", "--out", missing, wick)
+	wantFail(t, 2, "is a directory", "open", "--out", dir, wick)
+	wantFail(t, 2, "--key-out: cannot write", "seal", "--alg", "0xFE", "-n", "0", "--key-out", missing, plain)
+	wantFail(t, 2, "--wick: cannot write", "seal", "--alg", "0xFE", "-n", "0", "--wick", missing, plain)
 
 	// Without a .wick suffix there is no default output name.
 	os.Rename(wick, filepath.Join(dir, "renamed"))
@@ -446,6 +423,70 @@ func TestUsage(t *testing.T) {
 		if r := mustRun(t, args...); !strings.Contains(r.stdout, "Usage: wickset") {
 			t.Errorf("wickset %v: no usage on stdout\n%s", args, r.output())
 		}
+	}
+}
+
+// TestDevNull: opening into /dev/null burns the wick and checks the payload,
+// keeping nothing: a way to prove a wick opens.
+func TestDevNull(t *testing.T) {
+	dir := t.TempDir()
+	plain, _ := writePlain(t, dir, "plain")
+	mustRun(t, "seal", "--alg", "0xFE", "-n", "3", plain)
+	os.Remove(plain)
+	mustRun(t, "open", "--out", "/dev/null", plain+".wick")
+	if names := dirNames(t, dir); !slices.Equal(names, []string{"plain.payload", "plain.wick"}) {
+		t.Fatalf("directory holds %v", names)
+	}
+}
+
+// TestCompletion: asked as a shell asks (COMP_LINE), the command completes
+// wicks where only a wick goes, either file of a pair where either does,
+// and the algorithms for --alg.
+func TestCompletion(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"a.wick", "b.wick", "c.payload", "d.txt"} {
+		os.WriteFile(filepath.Join(dir, name), nil, 0o600)
+	}
+	complete := func(line string) []string {
+		cmd := exec.CommandContext(t.Context(), os.Args[0])
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), runMainEnv+"=1", "COMP_LINE="+line, fmt.Sprintf("COMP_POINT=%d", len(line)))
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		return strings.Fields(string(out))
+	}
+	if got := complete("wickset extend "); !slices.Contains(got, "a.wick") || !slices.Contains(got, "b.wick") ||
+		slices.Contains(got, "c.payload") || slices.Contains(got, "d.txt") {
+		t.Errorf("extend completes %v", got)
+	}
+	if got := complete("wickset open "); !slices.Contains(got, "a.wick") || !slices.Contains(got, "c.payload") || slices.Contains(got, "d.txt") {
+		t.Errorf("open completes %v", got)
+	}
+	if got := complete("wickset bypass "); !slices.Contains(got, "a.wick") || !slices.Contains(got, "c.payload") || slices.Contains(got, "d.txt") {
+		t.Errorf("bypass completes %v", got)
+	}
+	if got := complete("wickset seal --alg "); !slices.Contains(got, "0x01") || !slices.Contains(got, "sha256-iter-k29") {
+		t.Errorf("--alg completes %v", got)
+	}
+}
+
+// TestBenchCSV: bench --csv prints a header and one row of the same width,
+// for benchmarks/scores.csv.
+func TestBenchCSV(t *testing.T) {
+	r := mustRun(t, "--cpu", "bench", "--csv", "--alg", "0xFE")
+	rows, err := csv.NewReader(strings.NewReader(r.stdout)).ReadAll()
+	if err != nil || len(rows) != 2 || rows[0][0] != "date" || len(rows[1]) != len(rows[0]) {
+		t.Fatalf("bench --csv printed %q (%v)", r.stdout, err)
+	}
+}
+
+// TestVersion: --version names the program and says this is a test build.
+func TestVersion(t *testing.T) {
+	r := mustRun(t, "--version")
+	if !strings.HasPrefix(r.stdout, "wickset ") || !strings.Contains(r.stdout, "TEST BUILD") {
+		t.Fatalf("--version printed %q", r.stdout)
 	}
 }
 

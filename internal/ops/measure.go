@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"math"
 	"runtime"
@@ -9,17 +10,18 @@ import (
 	"time"
 
 	"wickset/alg"
+	"wickset/internal/sodium"
 	"wickset/wick"
 )
 
 // LongDelay is the delay from which a seal with no algorithm given uses the
-// long step rather than the short (README.md, "Choosing parameters").
+// long step rather than the short (docs/parameters.md).
 const LongDelay = 24 * time.Hour
 
 // AlgFor is the algorithm a seal of the given delay uses when none is given:
 // on the GPU, iterated SHA-256, which it seals far faster than it opens;
 // otherwise Argon2id, which keeps memory-hardness where the GPU's speed is
-// not on offer (README.md, "Choosing parameters").
+// not on offer (docs/parameters.md).
 func AlgFor(delay time.Duration, gpu bool) alg.Alg {
 	short, long := alg.Argon2idShort, alg.Argon2idLong
 	if gpu {
@@ -53,9 +55,72 @@ func cpuPart(ctx context.Context, a alg.Alg, x []byte, partway alg.Partway) (flo
 	return 1, err
 }
 
-// stepTime measures one step of a, alone, as a solve runs it: on b (the GPU)
-// if b is set, else on one core. It is the fastest of stepSamples, reported as
-// the run named label. Cancelling ctx stops it mid-sample.
+// argon2Lead is how much faster libsodium 1.0.22 runs an Argon2id pass than
+// x/crypto does here: 40 ms against 57 ms over 128 MiB on an Apple M5
+// (arm64). On amd64, where x/crypto has assembly, it is likely less, but
+// unmeasured; the same lead is assumed, erring toward a longer delay.
+const argon2Lead = 1.42
+
+// openTiming says how openPart times a's step, where it is not simply as
+// this build runs it; "" where it is.
+func openTiming(a alg.Alg) string {
+	switch _, sha := alg.SHA256IterOf(a); {
+	case sha:
+		return "at this core's full SHA-256 rate"
+	case sodium.Built:
+		if _, ok := alg.Argon2idParams(a); ok {
+			return "on libsodium " + sodium.Version()
+		}
+	default:
+		if _, ok := alg.Argon2idParams(a); ok {
+			return fmt.Sprintf("as libsodium runs it, %.2f× ours", argon2Lead)
+		}
+	}
+	return ""
+}
+
+// openPart is cpuPart as the fastest opener runs it, for timing the delay a
+// step makes. For iterated SHA-256 that is not our loop (sha256iter) but this
+// core's raw compression rate, timed by hashing a buffer, whose blocks follow
+// one another as a step's hashes do: a loop that keeps its state in registers
+// approaches it, and ours runs about 1.4× slower. Timing the rate, a delay
+// holds against such an opener; an honest one with wickset takes a little
+// longer to open. Any other step is timed as cpuPart runs it.
+//
+// Argon2id the same: libsodium runs it faster than x/crypto's, which is pure
+// Go on arm64 (its assembly is amd64's). Built with libsodium (-tags
+// libsodium), a step runs on it (argon2.Params.Key) and is timed as it
+// runs; otherwise our time is divided by libsodium's measured lead,
+// argon2Lead.
+func openPart(ctx context.Context, a alg.Alg, x []byte, partway alg.Partway) (float64, error) {
+	if _, ok := alg.Argon2idParams(a); ok && !sodium.Built {
+		share, err := cpuPart(ctx, a, x, partway)
+		return share * argon2Lead, err
+	}
+	c, ok := alg.SHA256IterOf(a)
+	if !ok {
+		return cpuPart(ctx, a, x, partway)
+	}
+	const block, bufBlocks = 64, 1 << 14 // 1 MiB a hash
+	buf := make([]byte, block*bufBlocks)
+	copy(buf, x)
+	hashes := min(c.K, slice)
+	for done := uint64(0); done < hashes; done += bufBlocks {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		sha256.Sum256(buf)
+		if done%(64*bufBlocks) == 0 {
+			partway(done+bufBlocks, hashes)
+		}
+	}
+	return float64(hashes) / float64(c.K), nil
+}
+
+// stepTime measures one step of a, alone, as the fastest solver runs it: on
+// b (the GPU) if b is set, else on one core (openPart). It is the fastest of
+// stepSamples, reported as the run named label. Cancelling ctx stops it
+// mid-sample.
 //
 // The fastest, not the median: a process's first step runs cold, up to ~20%
 // slower, and anything else on the machine only slows a step. A seal turns
@@ -76,7 +141,7 @@ func (e *Env) stepTime(ctx context.Context, a alg.Alg, label string, b *batcher)
 		if b != nil {
 			el, share, err = b.sample(ctx, a, [][]byte{x})
 		} else {
-			share, err = cpuPart(ctx, a, x, partway(send, 0, i, 1))
+			share, err = openPart(ctx, a, x, partway(send, 0, i, 1))
 			el = time.Since(t)
 		}
 		if err != nil {
@@ -153,16 +218,18 @@ func (e *Env) roundRate(ctx context.Context, a alg.Alg, label string, n int, b *
 // a delay, as many as the delay takes a solver here (at least one). A solver
 // runs one step at a time, on one core or, slower, on a GPU: in GPU mode both
 // are timed, and the faster sets the steps, so the delay holds against
-// either. gpu is how many steps the GPU (b) holds at a time; 0 for none.
-// expect is a step's measured time on one core, as a worker runs it; 0 if
-// not measured.
-func (e *Env) plan(ctx context.Context, label string, a alg.Alg, steps int, delay time.Duration, workers int, b *batcher, gpu int) (n int, expect time.Duration, err error) {
+// either. expect is a step's measured time on one core, as a worker runs it;
+// 0 if not measured. Where the run goes is place's to decide, after.
+func (e *Env) plan(ctx context.Context, a alg.Alg, steps int, delay time.Duration, b *batcher) (n int, expect time.Duration, err error) {
 	if delay > 0 {
 		if expect, err = e.stepTime(ctx, a, "measuring", nil); err != nil {
 			return 0, 0, err
 		}
 		st := expect
 		on := fmt.Sprintf("one core %v", st.Round(time.Millisecond))
+		if how := openTiming(a); how != "" {
+			on += ", " + how
+		}
 		if b != nil {
 			gt, err := e.stepTime(ctx, a, "measuring the GPU", b)
 			if err != nil {
@@ -175,11 +242,6 @@ func (e *Env) plan(ctx context.Context, label string, a alg.Alg, steps int, dela
 		steps = max(int((delay+st-1)/st), 1)
 		e.note(Detail, "measured a step (%s) → %d sequential steps for %s on this machine", on, steps, FormatDelay(delay))
 	}
-	gpu = min(gpu, steps)
-	if gpu > 0 {
-		e.note(Detail, "the GPU computes the steps, up to %d at a time; one of each batch is checked on the CPU", gpu)
-	}
-	e.warnMemory(a, workers, steps, gpu)
 	return steps, expect, nil
 }
 
@@ -191,14 +253,10 @@ func workerCount(workers, evals int) int {
 	return min(workers, evals)
 }
 
-// warnMemory notes the peak memory of a run on the CPU workers when it
-// reaches 1 GiB: a working set per worker. A run on the GPU (gpu > 0) has
-// said its budget already, before any work began (gpuBatcher).
-func (e *Env) warnMemory(a alg.Alg, workers, evals, gpu int) {
-	if gpu > 0 {
-		return
-	}
-	held := workerCount(workers, evals)
+// warnMemory notes the peak memory of a run on workers CPU workers when it
+// reaches 1 GiB: a working set per worker. (A run on the GPU says its own,
+// noteGPU.)
+func (e *Env) warnMemory(a alg.Alg, held int) {
 	total := int64(held) * int64(a.MemBytes())
 	if total < 1<<30 {
 		return
@@ -212,11 +270,24 @@ func (e *Env) warnMemory(a alg.Alg, workers, evals, gpu int) {
 // the solve and seal times they predict.
 type Bench struct {
 	Alg    alg.Alg
-	Step   time.Duration // one step alone, on one core
+	Step   time.Duration // one step alone, on one core, as the fastest opener runs it (openPart)
 	SealOn string        // where the rounds ran: "" for the CPU, or the GPU
 	Rounds []BenchRound  // steps side by side
 	Rows   []BenchRow
 }
+
+// StepNote says how Step was timed, for a front end to put beside it:
+// "(fastest of 3)", and how, where not as this build runs a step.
+func (b Bench) StepNote() string {
+	if how := b.StepTiming(); how != "" {
+		return "(fastest of 3, " + how + ")"
+	}
+	return "(fastest of 3)"
+}
+
+// StepTiming says how Step was timed where not as this build runs a step,
+// or "".
+func (b Bench) StepTiming() string { return openTiming(b.Alg) }
 
 // BenchRound is a seal's pace with At steps at once.
 type BenchRound struct {
@@ -258,8 +329,7 @@ func (b Bench) rate() float64 {
 
 // SpeedUp is how many times faster a wick seals here than it opens: the
 // seal's pace against the solver's, one step at a time on one core. It is
-// the algorithm's worth for sealing on this machine (README.md, "Choosing
-// parameters").
+// the algorithm's worth for sealing on this machine (docs/parameters.md).
 func (b Bench) SpeedUp() float64 { return b.rate() * b.Step.Seconds() }
 
 // SpeedUpLine says SpeedUp for a front end.
@@ -287,6 +357,7 @@ func (e *Env) Bench(ctx context.Context, a alg.Alg) (Bench, error) {
 	rounds := []int{runtime.GOMAXPROCS(0) / 2, runtime.GOMAXPROCS(0)}
 	if b != nil {
 		out.SealOn, rounds = "the "+GPUName()+" GPU", []int{n}
+		e.noteGPU(a, b, n)
 	}
 	if out.Step, err = e.stepTime(ctx, a, "timing one step", nil); err != nil {
 		return Bench{}, err

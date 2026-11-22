@@ -31,6 +31,32 @@ const (
 	maxBytes   = 256  // the most input or salt the kernel copies
 )
 
+// iterRate is one calibration probe: hashes a second with n steps side by
+// side.
+type iterRate struct {
+	n    int
+	rate float64
+}
+
+// rateAt reads probes, in order of n, at n: one thread's share of the first
+// probe's rate times n below it, else the last probe at or under n. Below the
+// first probe each thread runs at least that fast, so this errs low.
+func rateAt(probes []iterRate, n int) float64 {
+	if len(probes) == 0 || n <= 0 {
+		return 0
+	}
+	if first := probes[0]; n < first.n {
+		return first.rate * float64(n) / float64(first.n)
+	}
+	at := probes[0]
+	for _, p := range probes {
+		if p.n <= n {
+			at = p
+		}
+	}
+	return at.rate
+}
+
 // blocks is how many blocks an evaluation of p fills, rounded as x/crypto
 // rounds them.
 func blocks(p argon2.Params) uint32 {

@@ -1,6 +1,6 @@
 // Package format is wickset's two file formats (CONTAINER.md): the wick
 // file, which wraps a wick with a digest, and the payload file, the
-// encrypted data bound to its wick. Naming and archives are internal/store's.
+// encrypted data bound to its wick. Naming is internal/store's.
 package format
 
 import (

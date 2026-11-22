@@ -71,7 +71,7 @@ func TestSHA256Iter(t *testing.T) {
 	}
 	for _, id := range []ID{SHA256Short, SHA256Long} {
 		a, _ := Lookup(id)
-		if c, ok := SHA256IterOf(a); !ok || string(c.Domain) != fmt.Sprintf("wickset/v1::%02x", byte(id)) {
+		if c, ok := SHA256IterOf(a); !ok || string(c.Domain) != fmt.Sprintf("wickset/v1::%#02x", byte(id)) {
 			t.Fatalf("%v: domain %q", id, c.Domain)
 		}
 	}

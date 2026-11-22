@@ -52,7 +52,7 @@ func script(events []Event) string {
 // long algorithms, reports each sample as it runs, as a solve reports steps.
 func TestStepTimeReports(t *testing.T) {
 	e, events := record()
-	k, expect, err := e.plan(context.Background(), "sealing", fakeAlg{}, 0, time.Second, 1, nil, 0)
+	k, expect, err := e.plan(context.Background(), fakeAlg{}, 0, time.Second, nil)
 	if err != nil || k < 1 || expect < 0 {
 		t.Fatalf("steps %d, expect %v, %v", k, expect, err)
 	}
