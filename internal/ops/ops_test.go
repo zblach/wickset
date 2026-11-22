@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"runtime"
 	"strings"
 	"testing"
@@ -112,6 +113,14 @@ func TestBench(t *testing.T) {
 	}
 	if s := b.Sealing(); !strings.HasPrefix(s, "sealing:") {
 		t.Errorf("Sealing() = %q", s)
+	}
+	// The speed-up is the seal's pace against one step at a time: what a
+	// seal of many steps takes, against the solve.
+	if got, want := b.SpeedUp(), best*b.Step.Seconds(); got != want || got < 1 {
+		t.Errorf("SpeedUp %v, want %v (best %.1f steps/s, step %v)", got, want, best, b.Step)
+	}
+	if last := b.Rows[len(b.Rows)-1]; math.Abs(last.Solve.Seconds()/last.Seal.Seconds()-b.SpeedUp()) > 0.01*b.SpeedUp() {
+		t.Errorf("a million steps open in %v and seal in %v: not ×%.1f", last.Solve, last.Seal, b.SpeedUp())
 	}
 }
 

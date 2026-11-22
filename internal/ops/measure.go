@@ -248,6 +248,27 @@ func (b Bench) Sealing() string {
 	return s
 }
 
+// rate is a seal's pace, in steps a second: the best round's, or with no
+// rounds (one core), one step at a time.
+func (b Bench) rate() float64 {
+	best := 1 / b.Step.Seconds()
+	for _, r := range b.Rounds {
+		best = max(best, r.Rate)
+	}
+	return best
+}
+
+// SpeedUp is how many times faster a wick seals here than it opens: the
+// seal's pace against the solver's, one step at a time on one core. It is
+// the algorithm's worth for sealing on this machine (README.md, "Choosing
+// parameters").
+func (b Bench) SpeedUp() float64 { return b.rate() * b.Step.Seconds() }
+
+// SpeedUpLine says SpeedUp for a front end.
+func (b Bench) SpeedUpLine() string {
+	return fmt.Sprintf("speed-up ×%.1f: a wick seals here %.1f times faster than it opens", b.SpeedUp(), b.SpeedUp())
+}
+
 // BenchRow is what Bench predicts for one N.
 type BenchRow struct {
 	N     int
@@ -272,7 +293,6 @@ func (e *Env) Bench(ctx context.Context, a alg.Alg) (Bench, error) {
 	if out.Step, err = e.stepTime(ctx, a, "timing one step", nil); err != nil {
 		return Bench{}, err
 	}
-	best := 0.0
 	for _, at := range rounds {
 		if at < 2 || (len(out.Rounds) > 0 && out.Rounds[len(out.Rounds)-1].At == at) {
 			continue
@@ -282,11 +302,8 @@ func (e *Env) Bench(ctx context.Context, a alg.Alg) (Bench, error) {
 			return Bench{}, err
 		}
 		out.Rounds = append(out.Rounds, BenchRound{at, rate})
-		best = max(best, rate)
 	}
-	if best == 0 { // one core only
-		best = 1 / out.Step.Seconds()
-	}
+	best := out.rate()
 	for _, n := range []int{0, 999, 9_999, 99_999, 999_999} {
 		seal := time.Duration(float64(n+1) / best * float64(time.Second))
 		out.Rows = append(out.Rows, BenchRow{

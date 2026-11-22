@@ -248,24 +248,32 @@ func scripted(events ...ops.Event) *job {
 }
 
 // TestFineProgress: a long run shows movement every step, not every percent:
-// fine percentages, and, one worker at a time, the step under way, filling
-// over the time of the last.
+// fine percentages, and, one worker at a time, the step under way, against
+// the time of the last until it reports how far it is.
 func TestFineProgress(t *testing.T) {
 	if p := percent(68.0 / 109636); p != "0.06%" {
 		t.Errorf("percent %s", p)
 	}
-	s := scripted(
+	j := scripted(
 		stage(0, "solving", 1000),
 		step(0, chain.Began, 0, 0, 1),
 		step(2, chain.Finished, 0, 0, 1),
 		step(2, chain.Began, 0, 1, 1),
-	).snapshot()
+	)
+	s := j.snapshot()
 	if s.Done != 1 || s.StepAvg != 2*time.Second || s.Rate != 0.5 || s.Workers[0].First != 1 {
 		t.Fatalf("one step in 2 s: %+v", s.Run)
 	}
-	lay := newBarLayout(100, s.Run)
-	if f, _ := inFlight(time.Second, s.StepAvg); f != 0.5 || stepView(lay, s.Workers[0], s.StepAvg, t0.Add(3*time.Second)) == "" {
-		t.Fatalf("1 s into a 2 s step: fill %v", f)
+	estimated := flightView(s.Run, t0.Add(3*time.Second))
+	partway := step(4, chain.Partway, 0, 1, 1)
+	partway.Step.Part, partway.Step.OfParts = 1, 4
+	j.event(partway)
+	reported := flightView(j.snapshot().Run, t0.Add(4*time.Second))
+	if estimated == "" || reported == "" || estimated == reported {
+		t.Fatalf("in flight, estimated %q, then reported %q", estimated, reported)
+	}
+	if flightView(scripted(stage(0, "sealing", 10), step(0, chain.Began, 0, 0, 1), step(0, chain.Began, 1, 1, 1)).snapshot().Run, t0) != "" {
+		t.Fatal("many workers: a line in flight, not the bar alone")
 	}
 }
 

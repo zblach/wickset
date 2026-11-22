@@ -232,18 +232,19 @@ func trimRight(lines []string) []string {
 	return lines
 }
 
-// TestBarLayout: the two bars line up, keep their place and width from the
-// first step to the last however many digits the total has, and fit.
+// TestBarLayout: the bar keeps its place and width from the first step to
+// the last however many digits the total has, and fits; what is in flight
+// is written under it, from its first column.
 func TestBarLayout(t *testing.T) {
 	for _, total := range []int{13, 219, 3_000_000} {
 		for _, width := range []int{70, 100, 160} {
 			var shape string
 			for _, done := range []int{0, 1, total / 2, total - 1} {
 				lines := strings.Split(ansi.Strip(renderRun(width, runFrame{start: t0, now: t0, run: solving(total, done)})), "\n")
-				main, step := lines[1], lines[2]
-				barAt := strings.IndexAny(main, "▌░")
-				if s := strings.IndexAny(step, "▌░"); s != barAt {
-					t.Fatalf("total %d width %d done %d: bars start at %d and %d\n%s\n%s", total, width, done, barAt, s, main, step)
+				main, flight := lines[1], lines[2]
+				barAt := ansi.StringWidth(main[:strings.IndexAny(main, "█▓░")])
+				if at := len(flight) - len(strings.TrimLeft(flight, " ")); at != barAt {
+					t.Fatalf("total %d width %d done %d: the bar at %d, what's in flight at %d\n%s\n%s", total, width, done, barAt, at, main, flight)
 				}
 				if w := ansi.StringWidth(main) + 4; w > width {
 					t.Fatalf("total %d done %d: %d columns in a %d window\n%s", total, done, w, width, main)

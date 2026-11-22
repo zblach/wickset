@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/bubbles/v2/progress"
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
 
@@ -96,27 +95,15 @@ func renderRun(width int, f runFrame) string {
 		// Every width is set by the total, not the count so far, so nothing
 		// shifts or shrinks as the count gains digits.
 		lay := newBarLayout(width, s.Run)
-		bar := lay.bar.ViewAs(s.Fraction())
+		count := fmt.Sprintf("%d/%d steps", s.Done, s.Total) // padded to its widest, below
+		lines = append(lines, fmt.Sprintf("%-*s %s %-6s %-*s",
+			lay.label, s.Stage, workBar(lay.width, s.Run), percent(s.Fraction()), 2*digits(s.Total)+len("/ steps"), count))
+		if l := flightView(s.Run, f.now); l != "" { // under the bar, from its first column
+			lines = append(lines, strings.Repeat(" ", lay.label+1)+subtleStyle.Render(l))
+		}
 		batch := 0 // the GPU's batch, if the run is on one
 		if len(s.Workers) == 1 {
 			batch = s.Batch
-		}
-		if len(s.Workers) > 1 || batch > 1 {
-			bar = workBar(lay.width, s.Run)
-		}
-		// The text right of every bar starts in one column.
-		count := fmt.Sprintf("%d/%d steps", s.Done, s.Total) // padded to its widest, below
-		lines = append(lines, fmt.Sprintf("%-*s %s %-6s %-*s",
-			lay.label, s.Stage, bar, percent(s.Fraction()), 2*digits(s.Total)+len("/ steps"), count))
-		switch {
-		case batch > 1: // the GPU's batch in flight
-			if l := stepView(lay, s.Workers[0], s.BatchAvg, f.now); l != "" {
-				lines = append(lines, l)
-			}
-		case len(s.Workers) == 1: // a solve, or timing: one step at a time
-			if l := stepView(lay, s.Workers[0], s.StepAvg, f.now); l != "" {
-				lines = append(lines, l)
-			}
 		}
 		stats := []string{"elapsed " + el.Round(time.Second).String()}
 		switch {
@@ -234,6 +221,7 @@ func benchView(b ops.Bench) string {
 		"",
 		BenchTable(b).String(),
 		"",
+		headStyle.Render(b.SpeedUpLine()),
 		subtleStyle.Render(b.Sealing()),
 	}, "\n")
 }
@@ -271,11 +259,11 @@ func Columns(bold func(row, col int) bool) *table.Table {
 func HeaderRow(row, _ int) bool { return row == table.HeaderRow }
 func KeyColumn(_, col int) bool { return col == 0 }
 
-// workBar draws a parallel run's steps in width cells, each finished, in
-// progress or pending: the run's bar, with the work under way in a second
-// color, so how much runs at once shows at a glance. A cell holding any step
-// in progress shows in progress; the steps begun are claimed in order, so
-// below r.Claimed the rest are finished.
+// workBar draws a run's steps in width cells, each finished, in progress or
+// pending: the run's one bar, with the work under way in a second color and
+// shade, so how much runs at once shows at a glance, on one worker or many.
+// A cell holding any step in progress shows in progress; the steps begun are
+// claimed in order, so below r.Claimed the rest are finished.
 func workBar(width int, r ops.Run) string {
 	var b strings.Builder
 	cells := workCells(width, r)
@@ -315,57 +303,58 @@ const (
 	cellPending
 )
 
-var cellGlyphs = [...]string{cellDone: "█", cellBusy: "█", cellPending: "░"}
+var cellGlyphs = [...]string{cellDone: "█", cellBusy: "▓", cellPending: "░"}
 
-// stepView is a run's one step in flight, or a GPU's batch, as a second bar
-// under the overall one, filling over the recent time of one (avg).
-func stepView(lay barLayout, w ops.Worker, avg time.Duration, now time.Time) string {
-	if w.First < 0 || w.Since.IsZero() {
+// flightView says, in a line, what is in flight when one worker runs: a
+// solve's step, a timing's sample or a GPU's batch, and how far it is: as
+// it reported, or else against the recent time of one. Many workers show
+// in the bar alone.
+func flightView(r ops.Run, now time.Time) string {
+	if len(r.Workers) != 1 || r.Workers[0].First < 0 {
 		return ""
 	}
-	name := fmt.Sprintf("step %d", w.First+1)
+	w := r.Workers[0]
+	what, avg := fmt.Sprintf("step %d of %d", w.First+1, r.Total), r.StepAvg
 	if w.N > 1 {
-		name = fmt.Sprintf("batch %d", w.First/w.N+1)
+		what, avg = fmt.Sprintf("batch %d of %d", w.First/w.N+1, (r.Total+w.N-1)/w.N), r.BatchAvg
 	}
-	label := fmt.Sprintf("%-*s", lay.label, name)
-	f, text := inFlight(now.Sub(w.Since), avg)
-	if avg == 0 {
-		text += ", timing the first"
+	el := now.Sub(w.Since)
+	switch {
+	case w.Part > 0: // reported: how far, and what that leaves at this pace
+		left := time.Duration(float64(el) * (1 - w.Part) / w.Part)
+		return fmt.Sprintf("%s · %.0f%% · %s in, ~%s left", what, 100*w.Part, short(el), short(left))
+	case avg > 0:
+		return fmt.Sprintf("%s · %s of ~%s", what, short(el), short(avg))
+	default:
+		return fmt.Sprintf("%s · %s, timing the first", what, short(el))
 	}
-	return fmt.Sprintf("%s %s %s", label, lay.bar.ViewAs(f), subtleStyle.Render(text))
 }
 
-// inFlight estimates how far along a step is, el into it, from the recent
-// step time: the bar's fill, short of full, and "el of ~avg". A step
-// reports nothing until it ends, so this is all there is to show.
-func inFlight(el, stepAvg time.Duration) (float64, string) {
-	if stepAvg == 0 {
-		return 0, fmt.Sprintf("%.1fs", el.Seconds())
+// short is a time in flight: tenths of a second under a minute, else a span.
+func short(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%.1fs", d.Seconds())
 	}
-	return min(float64(el)/float64(stepAvg), 0.99), fmt.Sprintf("%.1fs of ~%.1fs", el.Seconds(), stepAvg.Seconds())
+	return ops.Span(d)
 }
 
-// barLayout is the shared geometry of a run's bars: the label column and a
-// bar sized to what the window leaves, both fixed for the run by its total.
+// barLayout is the run bar's geometry: the label column and a bar sized to
+// what the window leaves, both fixed for the run by its total.
 type barLayout struct {
 	label int
-	width int            // of the bar, in cells
-	bar   progress.Model // the run's overall bar, and a solve's step bar under it
+	width int // of the bar, in cells
 }
 
-// stepRightWidth bounds the text right of a step bar: "999.9s of ~999.9s".
-const stepRightWidth = 17
-
 func newBarLayout(width int, r ops.Run) barLayout {
-	label := max(len(r.Stage), len("batch ")+digits(r.Total))
-	right := max(len("100.0%  ")+2*digits(r.Total)+len("/ steps"), stepRightWidth) // the overall bar's, a step's
+	label := len(r.Stage)
+	right := len("100.0%  ") + 2*digits(r.Total) + len("/ steps")
 	bar := 40
 	if width > 0 {
 		// margins (2+2), the spaces either side of the bar, and the 1-column
 		// slack lipgloss keeps at the right edge
 		bar = min(max(width-4-label-2-right-1, 10), 50)
 	}
-	return barLayout{label, bar, progress.New(progress.WithDefaultBlend(), progress.WithWidth(bar), progress.WithoutPercentage())}
+	return barLayout{label, bar}
 }
 
 // digits is how many decimal digits n has.

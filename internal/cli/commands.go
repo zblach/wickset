@@ -175,7 +175,7 @@ func (c *benchCmd) Run(ctx context.Context, env *ops.Env) error {
 	}
 	fmt.Printf("%v: %v a step on one core (fastest of 3)\n\n", b.Alg.ID(), b.Step.Round(time.Millisecond))
 	lipgloss.Println(tui.BenchTable(b))
-	fmt.Printf("\n%s\n", b.Sealing())
+	fmt.Printf("\n%s\n%s\n", b.SpeedUpLine(), b.Sealing())
 	return nil
 }
 
