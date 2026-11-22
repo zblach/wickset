@@ -186,7 +186,7 @@ func (c *benchCmd) Run(ctx context.Context, env *ops.Env) error {
 		return err
 	}
 	if c.CSV {
-		return writeBenchCSV(os.Stdout, b, env.GPU)
+		return writeBenchCSV(os.Stdout, b)
 	}
 	fmt.Printf("%v: %v a step on one core %s\n\n", b.Alg.ID(), b.Step.Round(time.Millisecond), b.StepNote())
 	lipgloss.Println(tui.BenchTable(b))

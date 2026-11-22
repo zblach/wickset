@@ -20,19 +20,15 @@ var benchColumns = []string{
 }
 
 // writeBenchCSV writes b as one row of benchmarks/scores.csv, after the
-// header.
-func writeBenchCSV(w io.Writer, b ops.Bench, gpu bool) error {
+// header. gpu is the machine's, whether or not sealing used it (seal_on).
+func writeBenchCSV(w io.Writer, b ops.Bench) error {
 	argon2 := "x/crypto"
 	if sodium.Built {
 		argon2 = "libsodium " + sodium.Version()
 	}
-	gpuName := ""
-	if gpu {
-		gpuName = ops.GPUName()
-	}
 	sealOn, atOnce, rate := "cpu", 1, 1/b.Step.Seconds()
 	if b.SealOn != "" {
-		sealOn = gpuName
+		sealOn = "gpu"
 	}
 	for _, r := range b.Rounds {
 		if r.Rate > rate {
@@ -44,7 +40,7 @@ func writeBenchCSV(w io.Writer, b ops.Bench, gpu bool) error {
 	cw.Write(benchColumns)
 	cw.Write([]string{
 		time.Now().UTC().Format(time.DateOnly), Version(), runtime.GOOS, runtime.GOARCH,
-		cpuName(), strconv.Itoa(runtime.NumCPU()), gpuName, argon2,
+		cpuName(), strconv.Itoa(runtime.NumCPU()), ops.GPUName(), argon2,
 		b.Alg.Name(), f(b.Step.Seconds()), b.StepTiming(), sealOn, strconv.Itoa(atOnce), f(rate), f(b.SpeedUp()),
 	})
 	cw.Flush()
