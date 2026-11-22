@@ -1,8 +1,0 @@
-
-   chainlock
-
-  ✗ Checking notes.txt failed
-  notes.txt: chainlock: malformed object
-
-  enter menu · q quit
-

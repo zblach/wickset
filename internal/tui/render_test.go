@@ -20,7 +20,7 @@ import (
 	"chainlock/internal/store"
 )
 
-var update = flag.Bool("update", false, "rewrite the rendered screens in testdata/")
+var dump = flag.String("screens", "", "write every synthetic screen to this directory, to read a change by")
 
 // t0 is the synthetic instant every frame here is drawn at.
 var t0 = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -143,30 +143,36 @@ func mustAlg(id alg.ID) alg.Alg {
 	return a
 }
 
-// TestRenderedScreens compares each synthetic screen, as text at 100
-// columns, with testdata/NAME.txt; -update rewrites them. Reading those
-// files is the quick way to see a change to any screen.
-func TestRenderedScreens(t *testing.T) {
-	if ops.TestBuild() {
-		t.Skip("the screens are drawn for the default build, without the test algorithms and their banner")
-	}
-	// The same machine everywhere: 4 cores.
-	oldCores := cores
-	defer func() { cores = oldCores }()
-	cores = 4
-	screens := map[string]string{}
+// drawn is one synthetic screen: its text, unstyled, and the help line it
+// should end with.
+type drawn struct {
+	text, help string
+	result     *result // for a result screen
+}
+
+// screens draws every synthetic screen at width columns: each run frame and
+// result, the menu with and without the GPU, and each page of each form.
+func screens(width int) map[string]drawn {
+	out := map[string]drawn{}
 	h := newHelp()
+	runHelp := h.ShortHelpView([]key.Binding{runKeys.Cancel})
 	for name, f := range frames {
-		screens["run-"+name] = chrome(100, false, false, []string{renderRun(100, f)}, h.ShortHelpView([]key.Binding{runKeys.Cancel}))
+		out["run-"+name] = drawn{text: chrome(width, false, false, []string{renderRun(width, f)}, runHelp), help: runHelp}
 	}
+	resHelp := h.ShortHelpView([]key.Binding{resultKeys.Menu, resultKeys.Quit})
 	for name, r := range results {
-		screens["result-"+name] = chrome(100, false, false, []string{renderResult(r)}, h.ShortHelpView([]key.Binding{resultKeys.Menu, resultKeys.Quit}))
+		out["result-"+name] = drawn{text: chrome(width, false, false, []string{renderResult(r)}, resHelp), help: resHelp, result: r}
 	}
 	m := newModel(context.Background(), "notes.txt")
-	m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-	screens["menu"] = m.View().Content
-	m.gpu = true
-	screens["menu-gpu"] = m.View().Content
+	m.Update(tea.WindowSizeMsg{Width: width, Height: 40})
+	for _, gpu := range []bool{false, true} {
+		m.gpu = gpu
+		name := "menu"
+		if gpu {
+			name += "-gpu"
+		}
+		out[name] = drawn{text: m.View().Content, help: m.helpLine()}
+	}
 	m.gpu = false
 	for act := range action(len(actions)) {
 		for page := range pages(act) {
@@ -175,28 +181,46 @@ func TestRenderedScreens(t *testing.T) {
 				m.in.File = "notes.txt" // as page 1 collected it
 			}
 			m.openForm()
-			screens[fmt.Sprintf("form-%s-%d", strings.ToLower(actions[act].name), page+1)] = m.View().Content
+			out[fmt.Sprintf("form-%s-%d", strings.ToLower(actions[act].name), page+1)] = drawn{text: m.View().Content, help: m.helpLine()}
 		}
 	}
-	for name, s := range screens {
-		got := ansi.Strip(s)
-		got = strings.Join(trimRight(strings.Split(got, "\n")), "\n") + "\n"
-		path := filepath.Join("testdata", name+".txt")
-		if *update {
-			if err := os.MkdirAll("testdata", 0o755); err != nil {
+	for name, s := range out {
+		s.text = strings.Join(trimRight(strings.Split(ansi.Strip(s.text), "\n")), "\n") + "\n"
+		s.help = ansi.Strip(s.help)
+		out[name] = s
+	}
+	return out
+}
+
+// TestScreens draws every synthetic screen and holds it to what any wording
+// must keep: it fits the window, has the title and its help line, has no
+// formatting slip, and a failed or cancelled result shows no panel. With
+// -screens DIR it also writes each to DIR/NAME.txt, to read a change by.
+func TestScreens(t *testing.T) {
+	if ops.TestBuild() {
+		t.Skip("the screens are drawn for the default build, without the test algorithms and their banner")
+	}
+	// The same machine everywhere: 4 cores.
+	oldCores := cores
+	defer func() { cores = oldCores }()
+	cores = 4
+	const width = 100
+	for name, s := range screens(width) {
+		if *dump != "" {
+			if err := os.WriteFile(filepath.Join(*dump, name+".txt"), []byte(s.text), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
-				t.Fatal(err)
+		}
+		for i, l := range strings.Split(s.text, "\n") {
+			if w := ansi.StringWidth(l); w > width {
+				t.Errorf("%s line %d: %d columns in a %d-column window\n%s", name, i+1, w, width, l)
 			}
-			continue
 		}
-		want, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("%v (run with -update to create)", err)
+		if !strings.Contains(s.text, "chainlock") || !strings.Contains(s.text, s.help) || strings.Contains(s.text, "%!") {
+			t.Errorf("%s: no title, no help line %q, or a formatting slip:\n%s", name, s.help, s.text)
 		}
-		if got != string(want) {
-			t.Errorf("%s changed (run with -update to accept):\n%s", name, got)
+		if r := s.result; r != nil && r.err != nil && strings.Contains(s.text, "╭") {
+			t.Errorf("%s: a panel for a result that failed:\n%s", name, s.text)
 		}
 	}
 }

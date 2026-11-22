@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -57,8 +58,8 @@ func TestTabCompletes(t *testing.T) {
 	m := newModel(t.Context(), "")
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m.pick(actOpen) // Lock, then Save as
-	if v := ansi.Strip(m.View().Content); !strings.Contains(v, "tab complete") {
-		t.Fatalf("no completion hint in a path field:\n%s", v)
+	if hint := ansi.Strip(newHelp().ShortHelpView([]key.Binding{formKeys.Complete})); !strings.Contains(ansi.Strip(m.helpLine()), hint) {
+		t.Fatalf("no completion hint %q in a path field: %q", hint, m.helpLine())
 	}
 	for _, r := range d + "no" {
 		m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
@@ -71,8 +72,8 @@ func TestTabCompletes(t *testing.T) {
 		t.Fatalf("after tab: %q, want the common prefix %q", got, d+"notes.txt")
 	}
 	m.Update(tab)
-	if v := ansi.Strip(m.View().Content); !strings.Contains(v, "matches: notes.txt  notes.txt.lock") {
-		t.Fatalf("second tab listed nothing:\n%s", v)
+	if !slices.Equal(m.matches, []string{"notes.txt", "notes.txt.lock"}) {
+		t.Fatalf("second tab listed %q", m.matches)
 	}
 	if value() != d+"notes.txt" {
 		t.Fatal("listing changed the field")

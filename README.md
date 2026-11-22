@@ -159,8 +159,8 @@ Go's SHA-256.
     go test -tags chainlock_testalgs ./...   # adds CLI/TUI end-to-end tests
 
 The tag adds cheap test algorithms: never ship a binary built with it. GPU
-tests run natively on a Mac. After a deliberate TUI change,
-`go test ./internal/tui -run Rendered -args -update` redraws the stored screens.
+tests run natively on a Mac. To read every TUI screen after a change,
+`go test ./internal/tui -run Screens -args -screens DIR` writes them to DIR.
 
 ## Layout
 

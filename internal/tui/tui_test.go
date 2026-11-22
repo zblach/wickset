@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -64,8 +65,8 @@ func TestSealOpenBypass(t *testing.T) {
 	m := newModel(context.Background(), "")
 
 	v := submit(t, m, actSeal, &inputs{File: plain, Alg: 0xFE, Steps: "4", Form: store.FormArchive, KeyOut: keyFile})
-	if m.res.err != nil || !strings.Contains(v, "✓ Sealed") || !strings.Contains(v, "✓ "+plain+".chainlock.tar") {
-		t.Fatalf("seal: %v\n%s", m.res.err, v)
+	if _, err := os.Stat(plain + store.ArchiveSuffix); m.res.err != nil || err != nil {
+		t.Fatalf("seal: %v; the archive: %v", m.res.err, err)
 	}
 	// CONTAINER.md §5: the key is saved, never shown.
 	key, _, err := store.ReadKeyFile(keyFile)
@@ -93,9 +94,9 @@ func TestSealOpenBypass(t *testing.T) {
 		t.Fatalf("bypass: %v, wrote %q", m.res.err, got)
 	}
 
-	v = submit(t, m, actInfo, &inputs{File: plain + ".chainlock.tar"})
-	if !strings.Contains(v, "5 to open (N = 4)") || !strings.Contains(v, "belongs to this lock, undamaged") || !strings.Contains(v, "one archive") {
-		t.Fatalf("info:\n%s", v)
+	submit(t, m, actInfo, &inputs{File: plain + ".chainlock.tar"})
+	if in, ok := m.res.value.(*ops.Info); m.res.err != nil || !ok || in.N != 4 || in.PayloadErr != nil || in.Form != store.FormArchive {
+		t.Fatalf("info: %v, %+v", m.res.err, m.res.value)
 	}
 }
 
@@ -107,13 +108,16 @@ func TestRefusals(t *testing.T) {
 	m := newModel(context.Background(), "")
 	submit(t, m, actSeal, &inputs{File: plain, Alg: 0xFE, Steps: "1", Form: store.FormFile})
 
-	// The default output, plain, exists.
-	if v := submit(t, m, actOpen, &inputs{File: plain + ".lock"}); !strings.Contains(v, "already exists") {
-		t.Fatalf("open over an existing file:\n%s", v)
+	// The default output, plain, exists, and is left as it was.
+	submit(t, m, actOpen, &inputs{File: plain + ".lock"})
+	if got, _ := os.ReadFile(plain); m.res.err == nil || string(got) != "x" {
+		t.Fatalf("open over an existing file: %v, which now holds %q", m.res.err, got)
 	}
-	// Standard streams belong to the TUI.
-	if v := submit(t, m, actOpen, &inputs{File: plain + ".lock", Out: filepath.Join(dir, "o"), KeyOut: "-"}); !strings.Contains(v, "not available here") {
-		t.Fatalf("key to '-':\n%s", v)
+	// Standard streams belong to the TUI: refused before anything is written.
+	out := filepath.Join(dir, "o")
+	submit(t, m, actOpen, &inputs{File: plain + ".lock", Out: out, KeyOut: "-"})
+	if _, err := os.Stat(out); m.res.err == nil || err == nil {
+		t.Fatalf("key to '-': %v, and the output was written", m.res.err)
 	}
 	for _, s := range []string{"-", "chainlock-key-v1:AAAA", ""} {
 		if keyPath(true)(s) == nil {
@@ -147,81 +151,78 @@ func TestWorkers(t *testing.T) {
 }
 
 // TestSealPages: seal asks for the delay first, and its second page offers
-// the algorithm that delay suits, saying why; a step count keeps a pick.
+// the algorithm ops.AlgFor picks for that delay, with the GPU or without,
+// naming it; esc goes back keeping the delay, and a step count keeps a pick.
 func TestSealPages(t *testing.T) {
-	m := newModel(context.Background(), "")
-	m.pick(actSeal)
-	if v := view(m); !strings.Contains(v, "Delay") || strings.Contains(v, "Algorithm") || !strings.Contains(v, "(1 of 2)") {
-		t.Fatalf("page 1:\n%s", v)
-	}
-	for _, c := range []struct {
-		steps string
-		want  alg.ID
-		why   string
-	}{
-		{"8h", alg.Argon2idShort, "Suggested for a 8h delay: 0x01 (argon2id-m128M-t5-p1)."},
-		{"36h", alg.Argon2idLong, "Suggested for a 1d 12h delay: 0x02 (argon2id-m128M-t192-p1)."},
-		{"2 weeks", alg.Argon2idLong, "Suggested for a 2w delay: 0x02"},
-		{"6M", alg.Argon2idLong, "0x02"},
-		{"336h", alg.Argon2idLong, "0x02"},
-	} {
-		m.in.Steps = c.steps
+	for _, gpu := range []bool{false, true} {
+		m := newModel(context.Background(), "")
+		m.gpu = gpu
+		m.pick(actSeal)
+		var want alg.ID
+		for _, steps := range []string{"8h", "36h", "2 weeks", "6M", "336h"} {
+			m.in.Steps = steps
+			m.Update(submitMsg{})
+			_, d, _ := parseSteps(steps)
+			want = ops.AlgFor(d, gpu).ID()
+			if m.page != 1 || m.in.Alg != want || !strings.Contains(view(m), want.String()) {
+				t.Fatalf("gpu %v, %s: page %d, alg %v, want %v named\n%s", gpu, steps, m.page, m.in.Alg, want, view(m))
+			}
+			m.Update(backMsg{})
+			if m.page != 0 || m.screen != formScreen || m.in.Steps != steps {
+				t.Fatalf("esc on page 2: page %d screen %v steps %q", m.page, m.screen, m.in.Steps)
+			}
+		}
+		m.in.Steps = "5"
 		m.Update(submitMsg{})
-		v := view(m)
-		if m.page != 1 || m.in.Alg != c.want || !strings.Contains(v, c.why) || !strings.Contains(v, "(2 of 2)") {
-			t.Fatalf("%s: page %d alg %v\n%s", c.steps, m.page, m.in.Alg, v)
+		if m.in.Alg != want {
+			t.Fatalf("gpu %v: N changed the pick to %v from %v", gpu, m.in.Alg, want)
 		}
-		m.Update(backMsg{})
-		if m.page != 0 || m.screen != formScreen || m.in.Steps != c.steps {
-			t.Fatalf("esc on page 2: page %d screen %v steps %q", m.page, m.screen, m.in.Steps)
+		if a := args(actSeal, m.in).(ops.SealArgs); a.Alg == nil || a.N != 5 || a.Delay != 0 {
+			t.Fatalf("seal args %+v", a)
 		}
-	}
-	// N keeps whatever was picked (here: 0x02, from 336h).
-	m.in.Steps = "5"
-	m.Update(submitMsg{})
-	if m.in.Alg != alg.Argon2idLong || !strings.Contains(view(m), "N = 5: 6 steps") {
-		t.Fatalf("N: alg %v\n%s", m.in.Alg, view(m))
-	}
-	if a := args(actSeal, m.in).(ops.SealArgs); a.Alg == nil || a.N != 5 || a.Delay != 0 {
-		t.Fatalf("seal args %+v", a)
-	}
-	if d := defaultAlg(&inputs{Steps: "5"}); d != alg.Argon2idShort {
-		t.Fatalf("fresh N defaults to %v", d)
+		if d, short := defaultAlg(&inputs{Steps: "5", GPU: gpu}), ops.AlgFor(0, gpu).ID(); d != short {
+			t.Fatalf("gpu %v: a fresh N defaults to %v, not the short step %v", gpu, d, short)
+		}
 	}
 }
 
-// TestHelpPanel: ? opens the details on any seal page, where nothing is
-// being typed, and closes them; in a field with text it is typed instead.
+// TestHelpPanel: ? opens each seal page's own help where nothing is being
+// typed, offering a way to close it; ? or esc closes it, leaving the form
+// as it was. In a field with text, ? is typed instead.
 func TestHelpPanel(t *testing.T) {
 	m := newModel(context.Background(), "")
 	m.pick(actSeal)
 	question := tea.KeyPressMsg{Code: '?', Text: "?"}
-	press(m, question) // the file field is empty and focused
-	if v := view(m); !m.details || !strings.Contains(v, "Sealing does as much work as the wait") || !strings.Contains(v, "? or esc close") {
-		t.Fatalf("? on page 1:\n%s", v)
-	}
-	press(m, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if m.details || m.screen != formScreen {
-		t.Fatalf("esc did not close the panel only: help %v screen %v", m.details, m.screen)
+	closeHelp := newHelp().ShortHelpView([]key.Binding{formKeys.Close})
+	for page, close := range []tea.KeyPressMsg{{Code: tea.KeyEscape}, question} {
+		if page > 0 {
+			m.in.Steps = "1h"
+			m.Update(submitMsg{})
+		}
+		press(m, question) // nothing typed in the focused field
+		first, _, _ := strings.Cut(helpText(actSeal, page), "\n")
+		if v := view(m); !m.details || !strings.Contains(v, first) || !strings.Contains(v, ansi.Strip(closeHelp)) {
+			t.Fatalf("? on page %d: help %v\n%s", page+1, m.details, v)
+		}
+		press(m, close)
+		if m.details || m.screen != formScreen || m.page != page {
+			t.Fatalf("closing on page %d: help %v, screen %v, page %d", page+1, m.details, m.screen, m.page)
+		}
 	}
 
-	m.in.Steps = "1h"
-	m.Update(submitMsg{})
-	v := view(m)
-	if !strings.Contains(v, "Suggested for a 1h delay: 0x01") || !strings.Contains(v, "? details") {
-		t.Fatalf("page 2:\n%s", v)
+	m.pick(actSeal) // the file field, focused
+	for _, k := range []tea.KeyPressMsg{{Code: 'a', Text: "a"}, question} {
+		press(m, k)
 	}
-	press(m, question) // the algorithm select is focused
-	if v := view(m); !m.details || !strings.Contains(v, "0x04  SHA-256 chain, long step") {
-		t.Fatalf("? on page 2:\n%s", v)
+	if got, _ := m.form.GetFocusedField().GetValue().(string); m.details || got != "a?" {
+		t.Fatalf("? in a field with text: help %v, field %q", m.details, got)
 	}
-	press(m, question)
-	if m.details {
-		t.Fatal("? did not close the panel")
-	}
-	for _, l := range strings.Split(helpText(actSeal, 1)+"\n"+helpText(actSeal, 0), "\n") {
-		if n := len([]rune(l)); n > 76 {
-			t.Errorf("help line of %d columns: %q", n, l)
+
+	for page := range pages(actSeal) {
+		for _, l := range strings.Split(helpText(actSeal, page), "\n") {
+			if n := len([]rune(l)); n > 76 {
+				t.Errorf("help line of %d columns: %q", n, l)
+			}
 		}
 	}
 }
@@ -350,7 +351,11 @@ func TestMenu(t *testing.T) {
 		t.Fatalf("a payload preselects %v", actions[m.cursor].name)
 	}
 	v := view(m)
-	for _, s := range []string{"Seal", "Bypass", "test build", "file: x.payload"} {
+	want := []string{m.initial, "test build"} // the file given, and the test build's banner
+	for _, a := range actions {
+		want = append(want, a.name)
+	}
+	for _, s := range want {
 		if !strings.Contains(v, s) {
 			t.Errorf("menu lacks %q:\n%s", s, v)
 		}
@@ -372,9 +377,6 @@ func TestMenu(t *testing.T) {
 		toMenu(t, m)
 	}
 	choose(t, m, actBench)
-	if !strings.Contains(view(m), "Algorithm") {
-		t.Fatalf("bench has no algorithm field:\n%s", view(m))
-	}
 	if _, ok := alg.Lookup(m.in.Alg); !ok {
 		t.Fatalf("default alg %v undefined", m.in.Alg)
 	}

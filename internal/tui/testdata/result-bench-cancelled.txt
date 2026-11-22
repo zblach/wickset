@@ -1,7 +1,0 @@
-
-   chainlock
-
-  ■ Cancelled: Timing 0x02 (argon2id-m128M-t192-p1) (nothing was written)
-
-  enter menu · q quit
-

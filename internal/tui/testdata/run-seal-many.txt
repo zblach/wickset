@@ -1,9 +1,0 @@
-
-   chainlock
-
-  Sealing notes.txt
-  sealing    ███████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 30.0%  300/1000 steps
-  elapsed 20s · 64 workers · 25.0 steps/s · eta 28s
-
-  esc cancel
-

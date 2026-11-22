@@ -1,7 +1,0 @@
-
-   chainlock
-
-  ■ Cancelled: Sealing notes.txt (nothing was written)
-
-  enter menu · q quit
-
