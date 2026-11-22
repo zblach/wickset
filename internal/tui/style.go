@@ -25,6 +25,13 @@ var (
 	panelStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(dim).Padding(0, 1)
 	confirmStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(bad).Padding(0, 1)
 	keyStyle     = lipgloss.NewStyle().Foreground(accent)
+
+	// A workBar's cells: finished, in progress, pending.
+	cellStyles = [...]lipgloss.Style{
+		cellDone:    lipgloss.NewStyle().Foreground(accent),
+		cellBusy:    lipgloss.NewStyle().Foreground(lipgloss.Color("6")), // cyan
+		cellPending: lipgloss.NewStyle().Foreground(dim),
+	}
 )
 
 // formTheme is huh's Charm theme, except that unselected options and

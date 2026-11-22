@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"slices"
 
-	"golang.org/x/crypto/argon2"
+	"chainlock/internal/argon2"
 )
 
 // ErrUnknown reports an ALG_ID that is not defined in this build.
@@ -66,56 +66,61 @@ type Alg interface {
 	H(x []byte) []byte
 }
 
-// argon2idAlg is an Argon2id v1.3 registry entry (SPEC.md §3.1). Every value
-// is fixed by the entry; none is a global constant.
+// argon2idAlg is an Argon2id v1.3 registry entry (SPEC.md §3.1), with one
+// lane. Every value is fixed by the entry; none is a global constant.
 type argon2idAlg struct {
-	id      ID
-	name    string
-	salt    []byte // includes the entry's own id
-	memKiB  uint32
-	time    uint32
-	threads uint8
+	id     ID
+	name   string
+	params argon2.Params // the salt includes the entry's own id
 }
 
 func (a *argon2idAlg) ID() ID         { return a.id }
 func (a *argon2idAlg) Name() string   { return a.name }
-func (a *argon2idAlg) BlockSize() int { return 32 }
-func (a *argon2idAlg) MemBytes() int  { return int(a.memKiB) << 10 }
+func (a *argon2idAlg) BlockSize() int { return int(a.params.KeyLen) }
+func (a *argon2idAlg) MemBytes() int  { return int(a.params.MemoryKiB) << 10 }
 
-// H is x/crypto's Argon2id, unmodified.
 func (a *argon2idAlg) H(x []byte) []byte {
+	out, _ := a.eval(context.Background(), x) // never cancelled, so never fails
+	return out
+}
+
+// eval is H, stopping at Argon2's next sync point (a quarter pass) once ctx
+// is done: internal/argon2 is x/crypto's with that one change.
+func (a *argon2idAlg) eval(ctx context.Context, x []byte) ([]byte, error) {
 	// Argon2 allocates its whole working set (MemBytes) on every call. Left
 	// to the pacer, the previous call's dead set is still held when the next
 	// is allocated, doubling peak memory. Collecting first frees it; the heap
 	// is a few pointer-free buffers, so this costs well under a millisecond
 	// against a step of hundreds.
 	runtime.GC()
-	return argon2.IDKey(x, a.salt, a.time, a.memKiB, a.threads, uint32(a.BlockSize()))
+	return a.params.Key(ctx, x)
 }
 
-// Argon2idParams is a's Argon2id parameters, for running the same step by
-// other means (a GPU): x/crypto's argon2.IDKey(x, salt, passes, memKiB, 1,
-// a.BlockSize()) is a.H(x). ok is false if a is not an Argon2id entry.
-func Argon2idParams(a Alg) (salt []byte, memKiB, passes uint32, ok bool) {
+// Argon2idParams is a's parameters, for running the same step on another
+// argon2.Hasher (a GPU): Key with them is a.H. ok is false if a is not an
+// Argon2id entry.
+func Argon2idParams(a Alg) (p argon2.Params, ok bool) {
 	e, ok := a.(*argon2idAlg)
-	if !ok || e.threads != 1 {
-		return nil, 0, 0, false
+	if !ok {
+		return argon2.Params{}, false
 	}
-	return append([]byte(nil), e.salt...), e.memKiB, e.time, true
+	p = e.params
+	p.Salt = append([]byte(nil), p.Salt...)
+	return p, true
 }
 
-// Eval is a.H(x), except that it returns ctx's error as soon as ctx is done,
-// without waiting for the step. Sealing, extending and solving all evaluate
-// through it, so cancelling them returns at once rather than after a step of
-// up to tens of seconds.
-//
-// The step itself is not interrupted: no implementation of H need know about
-// cancellation, whatever runs it (this CPU, or one day a GPU). It finishes in
-// the background and its result is dropped, so its core and memory stay in
-// use for up to one step after the cancel.
+// Eval is a.H(x), except that it returns ctx's error once ctx is done.
+// Sealing, extending and solving all evaluate through it, so cancelling them
+// returns at once rather than after a step of up to tens of seconds. The
+// Argon2id entries stop mid-step, within a quarter pass, freeing their core
+// and memory; any other step is left to finish in the background, and its
+// result dropped.
 func Eval(ctx context.Context, a Alg, x []byte) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if c, ok := a.(evaler); ok {
+		return c.eval(ctx, x)
 	}
 	out := make(chan []byte, 1) // buffered: an abandoned step still exits
 	go func() { out <- a.H(x) }()
@@ -127,6 +132,11 @@ func Eval(ctx context.Context, a Alg, x []byte) ([]byte, error) {
 	}
 }
 
+// evaler is an Alg that can stop mid-step.
+type evaler interface {
+	eval(context.Context, []byte) ([]byte, error)
+}
+
 // registry is the closed set of defined algorithms (SPEC.md §3), indexed by
 // id. Together with testAlgs it is everything Lookup accepts.
 //
@@ -136,14 +146,12 @@ func Eval(ctx context.Context, a Alg, x []byte) ([]byte, error) {
 // never in either table; those tests hand them straight to chain's internal
 // functions.
 var registry = [idMax]Alg{
-	Argon2id256M: &argon2idAlg{
-		id: Argon2id256M, name: "argon2id-m256M-t3-p1", salt: []byte("chainlock/v1::01"),
-		memKiB: 262144, time: 3, threads: 1,
-	},
-	Argon2id1GT30: &argon2idAlg{
-		id: Argon2id1GT30, name: "argon2id-m1G-t30-p1", salt: []byte("chainlock/v1::02"),
-		memKiB: 1048576, time: 30, threads: 1,
-	},
+	Argon2id256M: &argon2idAlg{id: Argon2id256M, name: "argon2id-m256M-t3-p1", params: argon2.Params{
+		Salt: []byte("chainlock/v1::01"), MemoryKiB: 262144, Passes: 3, KeyLen: 32,
+	}},
+	Argon2id1GT30: &argon2idAlg{id: Argon2id1GT30, name: "argon2id-m1G-t30-p1", params: argon2.Params{
+		Salt: []byte("chainlock/v1::02"), MemoryKiB: 1048576, Passes: 30, KeyLen: 32,
+	}},
 }
 
 // Lookup returns the defined algorithm for id. 0x00 and unassigned IDs are

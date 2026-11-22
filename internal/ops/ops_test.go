@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -30,10 +31,10 @@ func TestStepTimeReports(t *testing.T) {
 		},
 		Activity: func(label string, total int) chain.Activity {
 			events = append(events, fmt.Sprintf("%s of %d", label, total))
-			return func(w, i int) { events = append(events, fmt.Sprintf("w%d #%d", w, i)) }
+			return func(w, i, _ int) { events = append(events, fmt.Sprintf("w%d #%d", w, i)) }
 		},
 	}
-	if k, err := e.plan(context.Background(), "sealing", fakeAlg{}, 0, time.Second, 1); err != nil || k < 1 {
+	if k, err := e.plan(context.Background(), "sealing", fakeAlg{}, 0, time.Second, 1, nil, 0); err != nil || k < 1 {
 		t.Fatalf("steps %d", k)
 	}
 	want := "measuring of 3, w0 #0, measuring 1/3, w0 #1, measuring 2/3, w0 #2, measuring 3/3, w0 #-1"
@@ -42,19 +43,49 @@ func TestStepTimeReports(t *testing.T) {
 	}
 }
 
-// TestBenchSeal: a seal of N+1 steps takes ceil((N+1)/cores) rounds of a step.
-func TestBenchSeal(t *testing.T) {
-	b, err := (&Env{}).Bench(context.Background(), fakeAlg{})
-	if err != nil || b.Cores < 1 {
-		t.Fatal(b.Cores, err)
+// TestBench: bench times one step on one core, then rounds of half the cores
+// and all of them side by side; a solve takes the steps one after another,
+// and a seal runs at the best round's measured pace.
+func TestBench(t *testing.T) {
+	var labels []string
+	e := &Env{Progress: func(label string) chain.Progress {
+		labels = append(labels, label)
+		return nil
+	}}
+	b, err := e.Bench(context.Background(), slowAlg{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cores := runtime.GOMAXPROCS(0)
+	want := []string{"timing one step"}
+	if cores/2 >= 2 {
+		want = append(want, fmt.Sprintf("timing %d at once", cores/2))
+	}
+	if cores >= 2 {
+		want = append(want, fmt.Sprintf("timing %d at once", cores))
+	}
+	if fmt.Sprint(labels) != fmt.Sprint(want) || b.SealOn != "" || len(b.Rounds) != len(want)-1 {
+		t.Fatalf("runs %q sealing on %q, rounds %v; want runs %q", labels, b.SealOn, b.Rounds, want)
+	}
+	best := 1 / b.Step.Seconds()
+	for _, r := range b.Rounds {
+		best = max(best, r.Rate)
 	}
 	for _, r := range b.Rows {
-		rounds := (r.N + 1 + b.Cores - 1) / b.Cores
-		if r.Seal != time.Duration(rounds)*b.Step || r.Seal > r.Solve {
-			t.Errorf("N=%d on %d cores: seal %v, solve %v, step %v", r.N, b.Cores, r.Seal, r.Solve, b.Step)
+		seal := max(time.Duration(float64(r.N+1)/best*float64(time.Second)), b.Step)
+		if r.Solve != time.Duration(r.N+1)*b.Step || r.Seal != seal {
+			t.Errorf("N=%d: solve %v, seal %v; step %v, best %.1f steps/s", r.N, r.Solve, r.Seal, b.Step, best)
 		}
 	}
+	if s := b.Sealing(); !strings.HasPrefix(s, "sealing:") {
+		t.Errorf("Sealing() = %q", s)
+	}
 }
+
+// slowAlg is fakeAlg at 2ms a step, so rounds side by side have a pace.
+type slowAlg struct{ fakeAlg }
+
+func (slowAlg) H(x []byte) []byte { time.Sleep(2 * time.Millisecond); return x }
 
 func TestParseDelay(t *testing.T) {
 	for in, want := range map[string]time.Duration{

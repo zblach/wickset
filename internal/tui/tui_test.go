@@ -8,6 +8,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -235,9 +236,9 @@ func TestFineProgress(t *testing.T) {
 	m.start("Sealing x", func(ctx context.Context, env *ops.Env) (any, error) {
 		act := env.Activity("sealing", 1000)
 		prog := env.Progress("sealing")
-		act(0, 0)
+		act(0, 0, 1)
 		time.Sleep(20 * time.Millisecond)
-		act(0, 1) // the first finished: a step time is known
+		act(0, 1, 1) // the first finished: a step time is known
 		prog(1, 1000)
 		step <- struct{}{}
 		<-release
@@ -294,20 +295,20 @@ func TestBenchProgress(t *testing.T) {
 	}
 }
 
-// TestWorkerGrid: a parallel run shows as under way, worker by worker,
-// before any evaluation finishes.
-func TestWorkerGrid(t *testing.T) {
+// TestWorkBar: a parallel run shows its steps in progress before any
+// finishes, and those its workers have moved on from as finished.
+func TestWorkBar(t *testing.T) {
 	m := newModel(context.Background(), "")
 	step, release := make(chan struct{}), make(chan struct{})
 	m.start("Sealing x", func(ctx context.Context, env *ops.Env) (any, error) {
 		act := env.Activity("sealing", 5)
-		act(0, 0)
-		act(1, 1)
-		act(2, 2)
+		act(0, 0, 1)
+		act(1, 1, 1)
+		act(2, 2, 1)
 		step <- struct{}{}
 		<-release
-		act(0, 3) // worker 1 finished evaluation 1 and moved on
-		act(1, -1)
+		act(0, 3, 1) // worker 0 finished step 0 and moved on
+		act(1, -1, 0)
 		step <- struct{}{}
 		<-release
 		return nil, nil
@@ -315,19 +316,18 @@ func TestWorkerGrid(t *testing.T) {
 	go m.job.run()
 
 	<-step
-	v := view(m)
-	for _, s := range []string{"0/5 steps", "worker 1", "worker 3", "#1", "#3"} {
-		if !strings.Contains(v, s) {
-			t.Errorf("before any evaluation ends, view lacks %q:\n%s", s, v)
-		}
+	s := m.job.snapshot()
+	if got := fmt.Sprint(workCells(5, s)); got != fmt.Sprint([]int{cellBusy, cellBusy, cellBusy, cellPending, cellPending}) {
+		t.Errorf("before any step ends, cells %s", got)
+	}
+	if v := view(m); !strings.Contains(v, "0/5 steps") || !strings.Contains(v, "· 3 workers ·") {
+		t.Errorf("view:\n%s", v)
 	}
 	release <- struct{}{}
 	<-step
-	v = view(m)
-	// Those steps took microseconds: too quick for bars, which would only
-	// repeat the run's own; the stats line still counts the workers.
-	if !strings.Contains(v, "· 3 workers ·") || strings.Contains(v, "worker 1") {
-		t.Errorf("after moves, view:\n%s", v)
+	s = m.job.snapshot()
+	if got := fmt.Sprint(workCells(5, s)); got != fmt.Sprint([]int{cellDone, cellDone, cellBusy, cellBusy, cellPending}) {
+		t.Errorf("after moves, cells %s", got)
 	}
 	close(release)
 }

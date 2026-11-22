@@ -23,8 +23,11 @@ import (
 
 // Run shows the TUI until the user quits. file, if given, preselects the
 // action that suits it, and starts the file field of whichever is chosen.
-func Run(ctx context.Context, file string) error {
-	_, err := tea.NewProgram(newModel(ctx, file), tea.WithContext(ctx)).Run()
+// gpu has seal and extend run on the GPU, as the title says throughout.
+func Run(ctx context.Context, file string, gpu bool) error {
+	m := newModel(ctx, file)
+	m.gpu = gpu
+	_, err := tea.NewProgram(m, tea.WithContext(ctx)).Run()
 	return err
 }
 
@@ -59,7 +62,7 @@ type model struct {
 
 	job     *job
 	confirm bool // asking whether to cancel the job
-	scroll  int  // the first worker bar shown
+	gpu     bool // seal and extend run on the GPU, set when the TUI starts
 	spin    spinner.Model
 	res     *result
 
@@ -185,11 +188,6 @@ func (m *model) key(k tea.KeyPressMsg) (tea.Cmd, bool) {
 			m.confirm = false
 		case !m.confirm && key.Matches(k, runKeys.Cancel):
 			m.confirm = true
-		case key.Matches(k, runKeys.Up):
-			m.scroll = max(m.scroll-1, 0)
-		case key.Matches(k, runKeys.Down):
-			n := len(m.job.snapshot().workers)
-			m.scroll = min(m.scroll+1, max(n-workerRowsFor(m.height), 0))
 		}
 		return nil, true
 	case resultScreen:
@@ -262,7 +260,7 @@ func (m *model) completeFocused() (tea.Cmd, bool) {
 // runs off the bottom and loses its last line.
 func (m *model) formSize() tea.WindowSizeMsg {
 	const below = 2 // huh draws two lines under the height it fits its fields to
-	around := lipgloss.Height(chrome(m.width, ops.TestBuild(), []string{"head", "form"}, "help")) - 1
+	around := lipgloss.Height(chrome(m.width, ops.TestBuild(), false, []string{"head", "form"}, "help")) - 1
 	return tea.WindowSizeMsg{Width: max(m.width-4, 20), Height: max(m.height-around-below, 6)}
 }
 
@@ -287,8 +285,8 @@ func (m *model) openForm() tea.Cmd {
 
 // start runs f as the job titled title.
 func (m *model) start(title string, f op) tea.Cmd {
-	m.job = newJob(m.ctx, title, f)
-	m.screen, m.form, m.confirm, m.scroll = runScreen, nil, false, 0
+	m.job = newJob(m.ctx, title, f, m.gpu)
+	m.screen, m.form, m.confirm = runScreen, nil, false
 	return tea.Batch(m.job.run, m.spin.Tick)
 }
 
@@ -323,7 +321,7 @@ func (m *model) View() tea.View {
 	case resultScreen:
 		parts = append(parts, renderResult(m.res))
 	}
-	v := tea.NewView(chrome(m.width, ops.TestBuild(), parts, m.helpLine()))
+	v := tea.NewView(chrome(m.width, ops.TestBuild(), m.gpu, parts, m.helpLine()))
 	v.AltScreen = true
 	v.WindowTitle = "chainlock"
 	if m.job != nil {
@@ -360,14 +358,9 @@ func (m *model) helpLine() string {
 			}
 		}
 	case runScreen:
-		switch {
-		case m.confirm:
+		keys = []key.Binding{runKeys.Cancel}
+		if m.confirm {
 			keys = []key.Binding{runKeys.Yes, runKeys.No}
-		default:
-			keys = []key.Binding{runKeys.Cancel}
-			if len(m.job.snapshot().workers) > workerRowsFor(m.height)+1 {
-				keys = append(keys, runKeys.Up)
-			}
 		}
 	case resultScreen:
 		keys = []key.Binding{resultKeys.Menu, resultKeys.Quit}
@@ -397,6 +390,6 @@ func (m *model) runView() string {
 	j := m.job
 	return renderRun(m.width, runFrame{
 		title: j.title, spinner: m.spin.View(), start: j.start, now: time.Now(),
-		run: j.snapshot(), confirm: m.confirm, scroll: m.scroll, rows: workerRowsFor(m.height),
+		run: j.snapshot(), confirm: m.confirm,
 	})
 }

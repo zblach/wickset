@@ -1,5 +1,5 @@
 
-   chainlock   sequential-delay lock
+   chainlock
 
   ✓ Checked notes.txt.lock in 7ms
 

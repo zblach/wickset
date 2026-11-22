@@ -1,18 +1,18 @@
 
-   chainlock   sequential-delay lock
+   chainlock
 
   ✓ Timed 0x01 (argon2id-m256M-t3-p1) in 1s
 
-  ╭────────────────────────────────────────────────────────────────────────────────────╮
-  │ 0x01 (argon2id-m256M-t3-p1): 353ms a step on this machine (one core, fastest of 3) │
-  │                                                                                    │
-  │ steps    opens in ≈  seals in ≥  lock size                                         │
-  │ 1        353ms       353ms       65 B                                              │
-  │ 10000    58m50s      14m43s      312.5 KiB                                         │
-  │ 1000000  4d 2h       1d 1h       30.5 MiB                                          │
-  │                                                                                    │
-  │ Sealing on all 4 cores; they share memory bandwidth, so it takes longer.           │
-  ╰────────────────────────────────────────────────────────────────────────────────────╯
+  ╭──────────────────────────────────────────────────────────────────────╮
+  │ 0x01 (argon2id-m256M-t3-p1): 353ms a step on one core (fastest of 3) │
+  │                                                                      │
+  │ steps    opens in ≈  seals in ≈  lock size                           │
+  │ 1        353ms       353ms       65 B                                │
+  │ 10000    58m50s      22m13s      312.5 KiB                           │
+  │ 1000000  4d 2h       1d 13h      30.5 MiB                            │
+  │                                                                      │
+  │ sealing: 2 at once 4.8 steps/s · 4 at once 7.5 steps/s               │
+  ╰──────────────────────────────────────────────────────────────────────╯
 
   enter menu · q quit
 

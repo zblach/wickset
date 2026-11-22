@@ -1,8 +1,8 @@
 
-   chainlock   sequential-delay lock
+   chainlock
 
   Sealing notes.txt
-  sealing     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 0.13%  144/113693 steps
+  sealing      █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 0.13%  144/113693 steps
   elapsed 20s · 4 workers · 8.0 steps/s · eta 3h56m
 
   ⚠ argon2id-m256M-t3-p1 uses 256 MiB per evaluation; 4 parallel workers need 1 GiB (set fewer

@@ -34,20 +34,24 @@ type snapshot struct {
 	done, total int
 	notes       []ops.Note
 	cancelled   bool
-	workers     []worker      // one per worker, as each starts; a solve is one worker
-	stepAvg     time.Duration // recent evaluation time, from those finished; 0 until one is
+	workers     []worker      // one per worker, as each starts; a solve is one worker, and so is a GPU
+	claimed     int           // steps begun so far: those below that are in progress or finished
+	stepAvg     time.Duration // recent time of one step, from those finished; 0 until one is
+	batchAvg    time.Duration // recent time of a GPU's batch: the time of each step in it, side by side
 	rate        float64       // steps a second in this stage, as of the last finished step; 0 before
 	eta         time.Duration // the stage's remaining time, as of the last finished step
 }
 
-// worker is one worker of a run. Each evaluation is opaque, so all there is
-// to show is which one it runs, for how long, and against the time recent
-// evaluations have taken.
+// worker is one worker of a run: the steps it is running, from first on (n
+// of them: one, or a GPU's batch), and since when. Each step is opaque, so
+// that is all there is to show.
 type worker struct {
-	index int       // the evaluation it is running, or -1 once it has finished for good
-	since time.Time // when it began that evaluation, or finished
-	done  int       // evaluations it has finished
+	first, n int       // first is -1 once it has finished for good
+	since    time.Time // when it began those steps, or finished
 }
+
+// busy reports whether w is running a step in [lo, hi).
+func (w worker) busy(lo, hi int) bool { return w.first >= 0 && w.first < hi && w.first+w.n > lo }
 
 // doneMsg ends a job: value is the operation's result, if it has one.
 type doneMsg struct {
@@ -59,10 +63,10 @@ type doneMsg struct {
 // has no Stdin or Stdout and a key path of "-" is refused.
 type op func(ctx context.Context, env *ops.Env) (any, error)
 
-func newJob(parent context.Context, title string, f op) *job {
+func newJob(parent context.Context, title string, f op, gpu bool) *job {
 	ctx, cancel := context.WithCancel(parent)
 	j := &job{title: title, start: time.Now(), cancel: cancel}
-	env := &ops.Env{Note: j.note, Progress: j.progress, Activity: j.activity}
+	env := &ops.Env{Note: j.note, Progress: j.progress, Activity: j.activity, GPU: gpu}
 	j.run = func() tea.Msg {
 		defer cancel()
 		v, err := f(ctx, env)
@@ -103,26 +107,34 @@ func (j *job) progress(label string) chain.Progress {
 func (j *job) activity(label string, total int) chain.Activity {
 	j.mu.Lock()
 	r := &j.rec
-	r.stage, r.stageStart, r.done, r.total, r.workers, r.rate, r.eta = label, time.Now(), 0, total, nil, 0, 0
+	r.stage, r.stageStart, r.done, r.total, r.workers, r.claimed, r.rate, r.eta = label, time.Now(), 0, total, nil, 0, 0, 0
 	j.mu.Unlock()
-	return func(w, i int) {
+	return func(w, first, n int) {
 		j.mu.Lock()
 		defer j.mu.Unlock()
 		for len(r.workers) <= w {
-			r.workers = append(r.workers, worker{index: -1})
+			r.workers = append(r.workers, worker{first: -1})
 		}
 		ws := &r.workers[w]
 		now := time.Now()
-		if !ws.since.IsZero() && ws.index >= 0 {
-			// A worker moves on only when its evaluation is finished.
-			ws.done++
-			if d := now.Sub(ws.since); r.stepAvg == 0 {
-				r.stepAvg = d
+		if ws.first >= 0 && !ws.since.IsZero() {
+			// A worker moves on only when its steps are finished. A batch's
+			// steps run side by side and finish together, so its time is
+			// its own, not one step's on a core.
+			avg := &r.stepAvg
+			if ws.n > 1 {
+				avg = &r.batchAvg
+			}
+			if d := now.Sub(ws.since); *avg == 0 {
+				*avg = d
 			} else {
-				r.stepAvg = (4*r.stepAvg + d) / 5
+				*avg = (4**avg + d) / 5
 			}
 		}
-		ws.index, ws.since = i, now
+		ws.first, ws.n, ws.since = first, n, now
+		if first >= 0 {
+			r.claimed = max(r.claimed, first+n)
+		}
 	}
 }
 

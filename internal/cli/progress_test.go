@@ -13,10 +13,10 @@ func TestTerminalLine(t *testing.T) {
 	var buf strings.Builder
 	term := &terminal{w: &buf, tty: true}
 	progress, activity := term.progress("solving"), term.activity("solving", 2)
-	activity(0, 0)
+	activity(0, 0, 1)
 	term.note(ops.Note{Kind: ops.Warning, Text: "careful"})
 	progress(1, 2)
-	activity(0, 1)
+	activity(0, 1, 1)
 	progress(2, 2)
 	out := buf.String()
 	for _, s := range []string{"\r\x1b[Kwarning: careful\n", "solving 0/2 steps", "solving 2/2 steps (100.00%)"} {

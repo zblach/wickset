@@ -154,9 +154,9 @@ func TestNew(t *testing.T) {
 	}
 }
 
-// TestCancelMidStep: cancelling a real build returns without waiting out the
-// steps in flight: within half a step (alg.Eval leaves them to finish in the
-// background). It measures its own step, so load cannot fake either.
+// TestCancelMidStep: cancelling a real build stops its workers inside their
+// steps, not after them: within half a step (a sync point is a twelfth of
+// one). It measures its own step, so load cannot fake either.
 func TestCancelMidStep(t *testing.T) {
 	a, _ := alg.Lookup(alg.Argon2id256M)
 	t0 := time.Now()
@@ -168,8 +168,8 @@ func TestCancelMidStep(t *testing.T) {
 	done := make(chan error)
 	go func() {
 		_, _, err := New(ctx, alg.Argon2id256M, 3, Opts{Workers: 2,
-			Activity: func(_, i int) {
-				if i >= 0 {
+			Activity: func(_, first, _ int) {
+				if first >= 0 {
 					started <- struct{}{}
 				}
 			}})
@@ -204,7 +204,7 @@ func TestActivity(t *testing.T) {
 			defer mu.Unlock()
 			progressBeforeStart = progressBeforeStart || len(started) < done
 		},
-		Activity: func(w, i int) {
+		Activity: func(w, i, n int) {
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
@@ -212,6 +212,8 @@ func TestActivity(t *testing.T) {
 				t.Errorf("worker %d active after its end, or out of range", w)
 			case i == -1:
 				ended[w] = true
+			case n != 1:
+				t.Errorf("a worker began %d evaluations at once", n)
 			default:
 				if _, dup := started[i]; dup {
 					t.Errorf("evaluation %d started twice", i)

@@ -1,5 +1,5 @@
 
-   chainlock   sequential-delay lock
+   chainlock
 
   Extend  Make a lock take longer to open
 

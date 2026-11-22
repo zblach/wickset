@@ -19,9 +19,26 @@ import (
 	"strings"
 	"sync"
 	"unsafe"
+
+	"chainlock/internal/argon2"
 )
 
-// Device is the system's GPU, through Metal, with the kernel compiled.
+// Built reports whether this build has a GPU backend: Metal, here.
+const Built = true
+
+// Name is the GPU's name, such as "Apple M5", or "" if the machine has none.
+// It compiles nothing, so it is cheap to show.
+func Name() string {
+	n := C.clm_device_name()
+	if n == nil {
+		return ""
+	}
+	defer C.free(unsafe.Pointer(n))
+	return C.GoString(n)
+}
+
+// Device is the system's GPU, through Metal, with the kernel compiled. It is
+// an argon2.Hasher.
 type Device struct {
 	mu sync.Mutex // one batch at a time: each holds most of the GPU's memory
 	c  *C.clm
@@ -59,24 +76,27 @@ func (d *Device) Close() {
 	d.c = nil
 }
 
-// MaxBatch is how many evaluations of p one batch holds: as many as fit one
+// Batch is how many evaluations of p one batch holds: as many as fit one
 // buffer, and half the working set the device recommends, which on Apple
 // silicon is shared with everything else the machine runs.
-func (d *Device) MaxBatch(p Params) int {
+func (d *Device) Batch(p argon2.Params) int {
 	limit := min(uint64(C.clm_max_buffer(d.c)), uint64(C.clm_working_set(d.c))/2)
-	return max(int(limit/p.InstanceBytes()), 1)
+	return max(int(limit/instanceBytes(p)), 1)
 }
 
-// Hash evaluates Argon2id with p over each input, as
-// argon2.IDKey(input, p.Salt, p.Passes, p.MemoryKiB, 1, p.KeyLen) would, in
-// batches of up to MaxBatch. Inputs are all one length. Cancelling ctx stops
-// it at the next segment, a quarter pass.
-func (d *Device) Hash(ctx context.Context, p Params, inputs [][]byte) ([][]byte, error) {
+// Memory is the working set the device recommends: on Apple silicon, most of
+// the machine's memory, which the CPU shares.
+func (d *Device) Memory() uint64 { return uint64(C.clm_working_set(d.c)) }
+
+// Hash evaluates Argon2id with p over each input, as p.Key would, in batches
+// of up to Batch. Inputs are all one length. Cancelling ctx stops it at the
+// next segment, a quarter pass.
+func (d *Device) Hash(ctx context.Context, p argon2.Params, inputs [][]byte) ([][]byte, error) {
 	if len(inputs) == 0 {
 		return nil, nil
 	}
 	n := len(inputs[0])
-	if err := p.check(n); err != nil {
+	if err := check(p, n); err != nil {
 		return nil, err
 	}
 	for _, in := range inputs {
@@ -87,7 +107,7 @@ func (d *Device) Hash(ctx context.Context, p Params, inputs [][]byte) ([][]byte,
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	var out [][]byte
-	for batch := d.MaxBatch(p); len(inputs) > 0; inputs = inputs[min(batch, len(inputs)):] {
+	for batch := d.Batch(p); len(inputs) > 0; inputs = inputs[min(batch, len(inputs)):] {
 		got, err := d.batch(ctx, p, inputs[:min(batch, len(inputs))])
 		if err != nil {
 			return nil, err
@@ -98,8 +118,8 @@ func (d *Device) Hash(ctx context.Context, p Params, inputs [][]byte) ([][]byte,
 }
 
 // batch runs one batch: init, every segment, final.
-func (d *Device) batch(ctx context.Context, p Params, inputs [][]byte) ([][]byte, error) {
-	job := p.job(len(inputs), len(inputs[0]))
+func (d *Device) batch(ctx context.Context, p argon2.Params, inputs [][]byte) ([][]byte, error) {
+	job := job(p, len(inputs), len(inputs[0]))
 	flat := make([]byte, 0, len(inputs)*len(inputs[0]))
 	for _, in := range inputs {
 		flat = append(flat, in...)
@@ -107,7 +127,7 @@ func (d *Device) batch(ctx context.Context, p Params, inputs [][]byte) ([][]byte
 	outLen := len(inputs) * int(p.KeyLen)
 	var cerr *C.char
 	j := C.clm_begin(d.c, unsafe.Pointer(&job[0]), C.size_t(len(job)), unsafe.Pointer(&flat[0]), C.size_t(len(flat)),
-		C.uint32_t(len(inputs)), C.uint64_t(p.InstanceBytes()), C.size_t(outLen), &cerr)
+		C.uint32_t(len(inputs)), C.uint64_t(instanceBytes(p)), C.size_t(outLen), &cerr)
 	if j == nil {
 		return nil, cError("argon2gpu: starting a batch", cerr)
 	}

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,11 +20,15 @@ import (
 // builds those values from its live state; tests and previews build them by
 // hand (render_test.go), so any state can be drawn without running anything.
 
-// chrome frames a screen: the title, the test-build banner if testBuild, the
-// parts with a blank line between each, and the help line (styled by its
-// maker, help.Model), within margins.
-func chrome(width int, testBuild bool, parts []string, help string) string {
-	all := []string{titleStyle.Render("chainlock") + "  " + subtleStyle.Render("sequential-delay lock")}
+// chrome frames a screen: the title, chainlock[gpu] when the GPU computes,
+// the test-build banner if testBuild, the parts with a blank line between
+// each, and the help line (styled by its maker, help.Model), within margins.
+func chrome(width int, testBuild, gpu bool, parts []string, help string) string {
+	title := "chainlock"
+	if gpu {
+		title += "[gpu]"
+	}
+	all := []string{titleStyle.Render(title)}
 	if testBuild {
 		b := bannerStyle
 		if width > 0 {
@@ -60,8 +65,6 @@ type runFrame struct {
 	now     time.Time // the instant shown; every elapsed time runs to it
 	run     snapshot
 	confirm bool // asking whether to cancel
-	scroll  int  // the first worker bar shown
-	rows    int  // how many worker bars show at once
 }
 
 // renderRun draws the run screen's body for a window width columns wide.
@@ -93,28 +96,38 @@ func renderRun(width int, f runFrame) string {
 		// Every width is set by the total, not the count so far, so nothing
 		// shifts or shrinks as the count gains digits.
 		lay := newBarLayout(width, s)
+		bar := lay.bar.ViewAs(s.fraction())
+		batch := 0 // the GPU's batch, if the run is on one
+		if len(s.workers) == 1 {
+			batch = s.workers[0].n
+		}
+		spread := len(s.workers) > 1 || batch > 1
+		if spread {
+			bar = workBar(lay.width, s)
+		}
 		// The text right of every bar starts in one column.
 		count := fmt.Sprintf("%d/%d steps", s.done, s.total) // padded to its widest, below
 		lines = append(lines, fmt.Sprintf("%-*s %s %-6s %-*s",
-			lay.label, s.stage, lay.bar.ViewAs(s.fraction()), percent(s.fraction()), 2*digits(s.total)+len("/ steps"), count))
-		if len(s.workers) == 1 { // a solve, or timing: one step at a time
+			lay.label, s.stage, bar, percent(s.fraction()), 2*digits(s.total)+len("/ steps"), count))
+		switch {
+		case batch > 1: // the GPU's batch in flight
+			if l := stepView(lay, s.workers[0], s.batchAvg, f.now); l != "" {
+				lines = append(lines, l)
+			}
+		case len(s.workers) == 1: // a solve, or timing: one step at a time
 			if l := stepView(lay, s.workers[0], s.stepAvg, f.now); l != "" {
 				lines = append(lines, l)
 			}
 		}
 		stats := []string{"elapsed " + el.Round(time.Second).String()}
-		if len(s.workers) > 1 {
+		switch {
+		case batch > 1:
+			stats = append(stats, fmt.Sprintf("GPU, batches of %d", batch))
+		case len(s.workers) > 1:
 			stats = append(stats, fmt.Sprintf("%d workers", len(s.workers)))
 		}
 		stats = append(stats, pace, "eta "+eta)
 		lines = append(lines, subtleStyle.Render(strings.Join(stats, " · ")))
-		// Each worker's own bar, set apart and in its own color, but only for
-		// steps long enough to watch (barStep): quicker ones would only
-		// repeat the run's bar.
-		if len(s.workers) > 1 && (s.stepAvg == 0 || s.stepAvg >= barStep) {
-			lines = append(lines, "")
-			lines = append(lines, workerRows(lay, s.workers, s.stepAvg, f.now, f.scroll, f.rows)...)
-		}
 	}
 	if len(s.notes) > 0 {
 		lines = append(lines, "", notesView(s.notes))
@@ -217,18 +230,18 @@ func infoView(in *ops.Info) string {
 
 func benchView(b ops.Bench) string {
 	return strings.Join([]string{
-		fmt.Sprintf("%v: %s a step on this machine %s", b.Alg.ID(),
-			headStyle.Render(b.Step.Round(time.Millisecond).String()), subtleStyle.Render("(one core, fastest of 3)")),
+		fmt.Sprintf("%v: %s a step on one core %s", b.Alg.ID(),
+			headStyle.Render(b.Step.Round(time.Millisecond).String()), subtleStyle.Render("(fastest of 3)")),
 		"",
 		BenchTable(b).String(),
 		"",
-		subtleStyle.Render(fmt.Sprintf("Sealing on all %d cores; they share memory bandwidth, so it takes longer.", b.Cores)),
+		subtleStyle.Render(b.Sealing()),
 	}, "\n")
 }
 
 // BenchTable is bench's predictions as a table, for the CLI as well.
 func BenchTable(b ops.Bench) *table.Table {
-	t := Columns(HeaderRow).Headers("steps", "opens in ≈", "seals in ≥", "lock size")
+	t := Columns(HeaderRow).Headers("steps", "opens in ≈", "seals in ≈", "lock size")
 	for _, r := range b.Rows {
 		t.Row(strconv.Itoa(r.N+1), ops.Span(r.Solve), ops.Span(r.Seal), ops.Bytes(int64(r.Size)))
 	}
@@ -259,15 +272,65 @@ func Columns(bold func(row, col int) bool) *table.Table {
 func HeaderRow(row, _ int) bool { return row == table.HeaderRow }
 func KeyColumn(_, col int) bool { return col == 0 }
 
-// stepView is a run's one step in flight, as a second bar under the
-// overall one.
-func stepView(lay barLayout, w worker, stepAvg time.Duration, now time.Time) string {
-	if w.index < 0 || w.since.IsZero() {
+// workBar draws a parallel run's steps in width cells, each finished, in
+// progress or pending: the run's bar, with the work under way in a second
+// color, so how much runs at once shows at a glance. A cell holding any step
+// in progress shows in progress; the steps begun are claimed in order, so
+// below s.claimed the rest are finished.
+func workBar(width int, s snapshot) string {
+	var b strings.Builder
+	cells := workCells(width, s)
+	for i := 0; i < len(cells); {
+		j := i
+		for j < len(cells) && cells[j] == cells[i] {
+			j++
+		}
+		b.WriteString(cellStyles[cells[i]].Render(strings.Repeat(cellGlyphs[cells[i]], j-i)))
+		i = j
+	}
+	return b.String()
+}
+
+// workCells is the state of each of a workBar's width cells.
+func workCells(width int, s snapshot) []int {
+	cells := make([]int, width)
+	for c := range cells {
+		lo := c * s.total / width
+		hi := max((c+1)*s.total/width, lo+1)
+		switch {
+		case slices.ContainsFunc(s.workers, func(w worker) bool { return w.busy(lo, hi) }):
+			cells[c] = cellBusy
+		case hi <= s.claimed:
+			cells[c] = cellDone
+		default:
+			cells[c] = cellPending
+		}
+	}
+	return cells
+}
+
+// The states of a workBar cell.
+const (
+	cellDone = iota
+	cellBusy
+	cellPending
+)
+
+var cellGlyphs = [...]string{cellDone: "█", cellBusy: "█", cellPending: "░"}
+
+// stepView is a run's one step in flight, or a GPU's batch, as a second bar
+// under the overall one, filling over the recent time of one (avg).
+func stepView(lay barLayout, w worker, avg time.Duration, now time.Time) string {
+	if w.first < 0 || w.since.IsZero() {
 		return ""
 	}
-	label := fmt.Sprintf("%-*s", lay.label, fmt.Sprintf("step %d", w.index+1))
-	f, text := inFlight(now.Sub(w.since), stepAvg)
-	if stepAvg == 0 {
+	name := fmt.Sprintf("step %d", w.first+1)
+	if w.n > 1 {
+		name = fmt.Sprintf("batch %d", w.first/w.n+1)
+	}
+	label := fmt.Sprintf("%-*s", lay.label, name)
+	f, text := inFlight(now.Sub(w.since), avg)
+	if avg == 0 {
 		text += ", timing the first"
 	}
 	return fmt.Sprintf("%s %s %s", label, lay.bar.ViewAs(f), subtleStyle.Render(text))
@@ -287,27 +350,23 @@ func inFlight(el, stepAvg time.Duration) (float64, string) {
 // bar sized to what the window leaves, both fixed for the run by its total.
 type barLayout struct {
 	label int
-	total int            // the run's step count, which sets the widths of step numbers
+	width int            // of the bar, in cells
 	bar   progress.Model // the run's overall bar, and a solve's step bar under it
-	sub   progress.Model // a worker's bar: one solid color, set apart from the overall
 }
 
 // stepRightWidth bounds the text right of a step bar: "999.9s of ~999.9s".
 const stepRightWidth = 17
 
 func newBarLayout(width int, s snapshot) barLayout {
-	label := max(len(s.stage), len("step ")+digits(s.total), len("worker ")+digits(len(s.workers)))
-	right := max(len("100.0%  ")+2*digits(s.total)+len("/ steps"), // the overall bar's
-		len("#")+digits(s.total)+1+stepRightWidth) // a worker's
+	label := max(len(s.stage), len("batch ")+digits(s.total))
+	right := max(len("100.0%  ")+2*digits(s.total)+len("/ steps"), stepRightWidth) // the overall bar's, a step's
 	bar := 40
 	if width > 0 {
 		// margins (2+2), the spaces either side of the bar, and the 1-column
 		// slack lipgloss keeps at the right edge
 		bar = min(max(width-4-label-2-right-1, 10), 50)
 	}
-	return barLayout{label, s.total,
-		progress.New(progress.WithDefaultBlend(), progress.WithWidth(bar), progress.WithoutPercentage()),
-		progress.New(progress.WithColors(accent), progress.WithWidth(bar), progress.WithoutPercentage())}
+	return barLayout{label, bar, progress.New(progress.WithDefaultBlend(), progress.WithWidth(bar), progress.WithoutPercentage())}
 }
 
 // digits is how many decimal digits n has.
@@ -322,53 +381,4 @@ func percent(f float64) string {
 		return fmt.Sprintf("%.1f%%", 100*f)
 	}
 	return fmt.Sprintf("%.2f%%", 100*f)
-}
-
-// workerRows is a bar per worker, stacked under the overall bar on the same
-// layout: the step it runs (inFlight), or how many it finished once it is
-// through. Only rows of them show, from the scroll'th; a line under them
-// says which, and how to see the rest.
-func workerRows(lay barLayout, ws []worker, stepAvg time.Duration, now time.Time, scroll, rows int) []string {
-	if rows <= 0 {
-		rows = workerRowsFor(0)
-	}
-	if len(ws) == rows+1 {
-		rows++ // scrolling to see one more row is not worth a line of its own
-	}
-	scroll = min(max(scroll, 0), max(len(ws)-rows, 0))
-	var lines []string
-	for w := scroll; w < min(scroll+rows, len(ws)); w++ {
-		s := ws[w]
-		label := fmt.Sprintf("%-*s", lay.label, fmt.Sprintf("worker %d", w+1))
-		switch {
-		case s.since.IsZero():
-			lines = append(lines, fmt.Sprintf("%s %s %s", label, lay.sub.ViewAs(0), subtleStyle.Render("starting")))
-		case s.index >= 0:
-			f, text := inFlight(now.Sub(s.since), stepAvg)
-			lines = append(lines, fmt.Sprintf("%s %s %s", label, lay.sub.ViewAs(f),
-				subtleStyle.Render(fmt.Sprintf("#%-*d %s", digits(lay.total), s.index+1, text))))
-		default:
-			lines = append(lines, fmt.Sprintf("%s %s %s", label, lay.sub.ViewAs(0),
-				okStyle.Render("✓")+subtleStyle.Render(fmt.Sprintf(" %d done", s.done))))
-		}
-	}
-	if len(ws) > rows {
-		lines = append(lines, subtleStyle.Render(fmt.Sprintf("workers %d–%d of %d · ↑/↓ to scroll",
-			scroll+1, min(scroll+rows, len(ws)), len(ws))))
-	}
-	return lines
-}
-
-// barStep is the shortest recent step time worth a bar per worker. Below it
-// each bar fills and empties several times a second, which reads as noise,
-// and the run's own bar already moves every step.
-const barStep = 2 * time.Second
-
-// workerRowsFor is how many worker bars fit a window height rows tall,
-// beside the rest of the run screen; 8 when the height is not known.
-func workerRowsFor(height int) int {
-	if height <= 0 {
-		return 8
-	}
-	return max(height-22, 3) // the title, bars, notes and help take ~22 rows
 }

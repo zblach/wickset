@@ -59,14 +59,17 @@ func (e *Env) Seal(ctx context.Context, a SealArgs) error {
 		a.Alg = AlgFor(a.Delay)
 		e.note(Detail, "algorithm %v for a delay of %s (no algorithm given; 0x02 from %s up)", a.Alg.ID(), FormatDelay(a.Delay), FormatDelay(LongDelay))
 	}
-	steps, err := e.plan(ctx, "sealing", a.Alg, a.N+1, a.Delay, a.Workers)
+	opts, b, gpu, err := e.withGPU(a.Alg, chain.Opts{Workers: a.Workers})
+	if err != nil {
+		return err
+	}
+	steps, err := e.plan(ctx, "sealing", a.Alg, a.N+1, a.Delay, a.Workers, b, gpu)
 	if err != nil {
 		return err
 	}
 	n := steps - 1
-	lock, payload, key, err := chainlock.Seal(ctx, pt, chainlock.SealOpts{Alg: a.Alg.ID(), N: n, Opts: chain.Opts{
-		Workers: a.Workers, Progress: e.progress("sealing"), Activity: e.activity("sealing", steps),
-	}})
+	opts.Progress, opts.Activity = e.progress("sealing"), e.activity("sealing", steps)
+	lock, payload, key, err := chainlock.Seal(ctx, pt, chainlock.SealOpts{Alg: a.Alg.ID(), N: n, Opts: opts})
 	if err != nil {
 		return err
 	}
@@ -108,6 +111,8 @@ func (e *Env) Open(ctx context.Context, a OpenArgs) error {
 	if err != nil {
 		return err
 	}
+	// One step at a time, on the CPU even in GPU mode: one core runs a single
+	// step faster than a GPU does.
 	pt, key, err := chainlock.Open(ctx, l.Obj, payload, e.solveProgress(l.Parsed.N+1))
 	if err != nil {
 		return err
@@ -176,13 +181,16 @@ func (e *Env) Extend(ctx context.Context, a ExtendArgs) error {
 		}
 	}
 	p := l.Parsed
-	add, err := e.plan(ctx, "extending", p.Alg, a.Add, a.Delay, a.Workers)
+	opts, b, gpu, err := e.withGPU(p.Alg, chain.Opts{Workers: a.Workers})
 	if err != nil {
 		return err
 	}
-	ext, err := chain.Extend(ctx, l.Obj, add, chain.Opts{
-		Workers: a.Workers, Progress: e.progress("extending"), Activity: e.activity("extending", add),
-	})
+	add, err := e.plan(ctx, "extending", p.Alg, a.Add, a.Delay, a.Workers, b, gpu)
+	if err != nil {
+		return err
+	}
+	opts.Progress, opts.Activity = e.progress("extending"), e.activity("extending", add)
+	ext, err := chain.Extend(ctx, l.Obj, add, opts)
 	if err != nil {
 		return err
 	}

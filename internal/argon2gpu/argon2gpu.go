@@ -1,11 +1,9 @@
 // Package argon2gpu runs Argon2id on a GPU, many independent evaluations of
-// one parameter set at a time, as sealing needs. The Argon2 is hashcat's
-// kernel (hashcat/, vendored unmodified); this package is only the host that
-// loads it and moves inputs and outputs, and its tests hold every result to
-// x/crypto's argon2.IDKey.
-//
-// One lane only (p = 1), as every chainlock algorithm is: a step that could
-// spread over cores would let a solver do the same.
+// one parameter set at a time, as sealing needs. Its Device is an
+// argon2.Hasher, like internal/argon2's CPU. The Argon2 is hashcat's kernel
+// (hashcat/, vendored unmodified); this package is only the host that loads
+// it and moves inputs and outputs, and its tests hold every result to
+// x/crypto's.
 package argon2gpu
 
 import (
@@ -15,19 +13,12 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"chainlock/internal/argon2"
 )
 
 // ErrUnavailable reports a build or machine with no supported GPU.
 var ErrUnavailable = errors.New("argon2gpu: no supported GPU in this build")
-
-// Params is one Argon2id parameter set, as argon2.IDKey takes it with
-// threads = 1.
-type Params struct {
-	Salt      []byte
-	MemoryKiB uint32
-	Passes    uint32
-	KeyLen    uint32 // a multiple of 8, at most 64
-}
 
 const (
 	syncPoints = 4
@@ -35,15 +26,16 @@ const (
 	maxBytes   = 256  // the most input or salt the kernel copies
 )
 
-// blocks is how many blocks an evaluation fills, rounded as x/crypto does.
-func (p Params) blocks() uint32 {
+// blocks is how many blocks an evaluation of p fills, rounded as x/crypto
+// rounds them.
+func blocks(p argon2.Params) uint32 {
 	return max(p.MemoryKiB/syncPoints*syncPoints, 2*syncPoints)
 }
 
-// InstanceBytes is the memory one evaluation holds on the device.
-func (p Params) InstanceBytes() uint64 { return uint64(p.blocks()) * blockSize }
+// instanceBytes is the memory one evaluation of p holds on the device.
+func instanceBytes(p argon2.Params) uint64 { return uint64(blocks(p)) * blockSize }
 
-func (p Params) check(inputLen int) error {
+func check(p argon2.Params, inputLen int) error {
 	switch {
 	case p.Passes < 1:
 		return errors.New("argon2gpu: no passes")
@@ -59,8 +51,8 @@ func (p Params) check(inputLen int) error {
 
 // job is chainlock_job_t (kernel.cl) for count inputs of inputLen bytes:
 // hashcat's argon2_options_t, then the batch.
-func (p Params) job(count, inputLen int) []byte {
-	b := p.blocks()
+func job(p argon2.Params, count, inputLen int) []byte {
+	b := blocks(p)
 	words := []uint32{
 		2,    // type: Argon2id
 		0x13, // version 1.3

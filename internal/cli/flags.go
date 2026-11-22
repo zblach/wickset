@@ -54,5 +54,5 @@ func (d *delayFlag) UnmarshalText(text []byte) error {
 
 // workersFlag is the --workers flag shared by seal and extend.
 type workersFlag struct {
-	Workers int `short:"w" help:"Parallel evaluations (0 = all cores); memory is workers × the algorithm's."`
+	Workers int `short:"w" help:"Parallel evaluations (0 = all cores); memory is workers × the algorithm's. With --gpu, only if the GPU fails."`
 }

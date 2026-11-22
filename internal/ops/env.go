@@ -22,6 +22,9 @@ type Env struct {
 	// terminal leaves them nil, and "-" is then refused.
 	Stdin  io.Reader
 	Stdout io.Writer
+	// GPU has seal and extend compute on the GPU (GPUName) instead of the
+	// workers: chosen when the program starts, for all it does.
+	GPU bool
 }
 
 // A Note is one line of an operation's commentary, of one Kind, so a front
@@ -91,15 +94,15 @@ func (e *Env) solveProgress(steps int) chain.Progress {
 	if activity == nil {
 		return progress
 	}
-	activity(0, 0)
+	activity(0, 0, 1)
 	return func(done, total int) {
 		if progress != nil {
 			progress(done, total)
 		}
 		if done < total {
-			activity(0, done)
+			activity(0, done, 1)
 		} else {
-			activity(0, -1)
+			activity(0, -1, 0)
 		}
 	}
 }

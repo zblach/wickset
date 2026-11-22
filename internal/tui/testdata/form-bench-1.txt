@@ -1,5 +1,5 @@
 
-   chainlock   sequential-delay lock
+   chainlock
 
   Bench  Time this machine to see how long locks take
 

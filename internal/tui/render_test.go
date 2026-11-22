@@ -29,16 +29,17 @@ var t0 = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 func solving(total, done int) snapshot {
 	return snapshot{
 		stage: "solving", stageStart: t0.Add(-35 * time.Second), done: done, total: total,
-		workers: []worker{{index: done, since: t0.Add(-3 * time.Second)}},
+		workers: []worker{{first: done, n: 1, since: t0.Add(-3 * time.Second)}},
+		claimed: done + 1,
 		stepAvg: 16500 * time.Millisecond, rate: 1 / 16.5, eta: time.Duration(total-done) * 16500 * time.Millisecond,
 	}
 }
 
-// manyWorkers is n workers, each part way through a step.
-func manyWorkers(n int) []worker {
+// busy is n workers, each part way through one step, from step first on.
+func busy(n, first int) []worker {
 	ws := make([]worker, n)
 	for i := range ws {
-		ws[i] = worker{index: 3000 + i, since: t0.Add(-time.Duration(i*29%19) * 100 * time.Millisecond), done: 46}
+		ws[i] = worker{first: first + i, n: 1, since: t0.Add(-time.Duration(i*29%19) * 100 * time.Millisecond)}
 	}
 	return ws
 }
@@ -47,28 +48,29 @@ func manyWorkers(n int) []worker {
 var frames = map[string]runFrame{
 	"open-long":     {title: "Opening notes.chainlock.tar", start: t0.Add(-35 * time.Second), now: t0, run: solving(219, 2)},
 	"open-millions": {title: "Opening big.lock", start: t0.Add(-35 * time.Second), now: t0, run: solving(3_000_000, 1_234_567)},
-	"seal-many": {title: "Sealing notes.txt", start: t0.Add(-20 * time.Second), now: t0, scroll: 8, rows: 8, run: snapshot{
-		stage: "sealing", stageStart: t0.Add(-18 * time.Second), done: 3000, total: 1_000_000,
-		workers: manyWorkers(64), stepAvg: 2500 * time.Millisecond, rate: 25, eta: 11 * time.Hour,
+	// Ten workers on 120 steps: the work under way shows as its own span.
+	"seal-ten": {title: "Sealing notes.txt", start: t0.Add(-20 * time.Second), now: t0, run: snapshot{
+		stage: "sealing", stageStart: t0.Add(-18 * time.Second), done: 40, total: 120, claimed: 50,
+		workers: busy(10, 40), stepAvg: 4 * time.Second, rate: 2.2, eta: 36 * time.Second,
 	}},
+	"seal-many": {title: "Sealing notes.txt", start: t0.Add(-20 * time.Second), now: t0, run: snapshot{
+		stage: "sealing", stageStart: t0.Add(-18 * time.Second), done: 300, total: 1000, claimed: 364,
+		workers: busy(64, 300), stepAvg: 2500 * time.Millisecond, rate: 25, eta: 28 * time.Second,
+	}},
+	// Four workers on 76001 steps: the work under way is a cell.
 	"seal-long": {title: "Sealing notes.txt", start: t0.Add(-90 * time.Second), now: t0, run: snapshot{
-		stage: "sealing", stageStart: t0.Add(-40 * time.Second), done: 8, total: 76001,
-		workers: []worker{
-			{index: 8, since: t0.Add(-2 * time.Second), done: 2},
-			{index: 9, since: t0.Add(-7 * time.Second), done: 2},
-			{index: 10, since: t0.Add(-11 * time.Second), done: 2},
-			{index: 11, since: t0.Add(-15 * time.Second), done: 2},
-		},
-		stepAvg: 16500 * time.Millisecond, rate: 0.2, eta: 4*24*time.Hour + 9*time.Hour,
+		stage: "sealing", stageStart: t0.Add(-40 * time.Second), done: 8, total: 76001, claimed: 12,
+		workers: busy(4, 8), stepAvg: 16500 * time.Millisecond, rate: 0.2, eta: 4*24*time.Hour + 9*time.Hour,
+	}},
+	// The GPU, 12 steps at a time on 30: the batch under way, and its bar.
+	"seal-gpu": {title: "Sealing notes.txt", start: t0.Add(-60 * time.Second), now: t0, run: snapshot{
+		stage: "sealing", stageStart: t0.Add(-55 * time.Second), done: 12, total: 30, claimed: 24,
+		workers:  []worker{{first: 12, n: 12, since: t0.Add(-15 * time.Second)}},
+		batchAvg: 40 * time.Second, rate: 0.3, eta: time.Minute,
 	}},
 	"seal-quick": {title: "Sealing notes.txt", start: t0.Add(-20 * time.Second), now: t0, run: snapshot{
-		stage: "sealing", stageStart: t0.Add(-18 * time.Second), done: 144, total: 113693,
-		workers: []worker{
-			{index: 145, since: t0.Add(-100 * time.Millisecond), done: 36},
-			{index: 146, since: t0.Add(-300 * time.Millisecond), done: 36},
-			{index: 147, since: t0.Add(-400 * time.Millisecond), done: 36},
-			{index: -1, since: t0.Add(-time.Second), done: 36},
-		},
+		stage: "sealing", stageStart: t0.Add(-18 * time.Second), done: 144, total: 113693, claimed: 147,
+		workers: append(busy(3, 144), worker{first: -1, since: t0.Add(-time.Second)}),
 		stepAvg: 480 * time.Millisecond, rate: 8, eta: 3*time.Hour + 56*time.Minute,
 		notes: []ops.Note{
 			{Kind: ops.Detail, Text: "measured step 380ms → 113693 sequential steps for 12h on this machine"},
@@ -77,7 +79,7 @@ var frames = map[string]runFrame{
 	}},
 	"measuring-confirm": {title: "Sealing notes.txt", start: t0.Add(-6 * time.Second), now: t0, confirm: true, run: snapshot{
 		stage: "measuring", stageStart: t0.Add(-6 * time.Second), total: 3,
-		workers: []worker{{index: 0, since: t0.Add(-6 * time.Second)}},
+		workers: []worker{{first: 0, n: 1, since: t0.Add(-6 * time.Second)}}, claimed: 1,
 	}},
 }
 
@@ -88,11 +90,12 @@ var results = map[string]*result{
 		PayloadWhere: "notes.txt.payload",
 	}},
 	"bench": {title: "Timing 0x01 (argon2id-m256M-t3-p1)", act: actBench, elapsed: 1100 * time.Millisecond, value: ops.Bench{
-		Alg: mustAlg(alg.Argon2id256M), Step: 353 * time.Millisecond, Cores: 4,
+		Alg: mustAlg(alg.Argon2id256M), Step: 353 * time.Millisecond,
+		Rounds: []ops.BenchRound{{At: 2, Rate: 4.8}, {At: 4, Rate: 7.5}},
 		Rows: []ops.BenchRow{
 			{N: 0, Solve: 353 * time.Millisecond, Seal: 353 * time.Millisecond, Size: 65},
-			{N: 9_999, Solve: 3530 * time.Second, Seal: 2500 * 353 * time.Millisecond, Size: 320033},
-			{N: 999_999, Solve: 353000 * time.Second, Seal: 250000 * 353 * time.Millisecond, Size: 32000033},
+			{N: 9_999, Solve: 3530 * time.Second, Seal: 1333 * time.Second, Size: 320033},
+			{N: 999_999, Solve: 353000 * time.Second, Seal: 133333 * time.Second, Size: 32000033},
 		},
 	}},
 	"failed": {title: "Opening notes.txt.lock", act: actOpen, elapsed: 3 * time.Millisecond,
@@ -145,17 +148,24 @@ func TestRenderedScreens(t *testing.T) {
 	if ops.TestBuild() {
 		t.Skip("the screens are drawn for the default build, without the test algorithms and their banner")
 	}
+	// The same machine everywhere: 4 cores.
+	oldCores := cores
+	defer func() { cores = oldCores }()
+	cores = 4
 	screens := map[string]string{}
 	h := newHelp()
 	for name, f := range frames {
-		screens["run-"+name] = chrome(100, false, []string{renderRun(100, f)}, h.ShortHelpView([]key.Binding{runKeys.Cancel}))
+		screens["run-"+name] = chrome(100, false, false, []string{renderRun(100, f)}, h.ShortHelpView([]key.Binding{runKeys.Cancel}))
 	}
 	for name, r := range results {
-		screens["result-"+name] = chrome(100, false, []string{renderResult(r)}, h.ShortHelpView([]key.Binding{resultKeys.Menu, resultKeys.Quit}))
+		screens["result-"+name] = chrome(100, false, false, []string{renderResult(r)}, h.ShortHelpView([]key.Binding{resultKeys.Menu, resultKeys.Quit}))
 	}
 	m := newModel(context.Background(), "notes.txt")
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	screens["menu"] = m.View().Content
+	m.gpu = true
+	screens["menu-gpu"] = m.View().Content
+	m.gpu = false
 	for act := range action(len(actions)) {
 		for page := range pages(act) {
 			m.screen, m.act, m.page, m.in = formScreen, act, page, &inputs{Steps: "12h", Alg: alg.Argon2id256M}

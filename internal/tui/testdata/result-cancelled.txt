@@ -1,5 +1,5 @@
 
-   chainlock   sequential-delay lock
+   chainlock
 
   ■ Cancelled: Sealing notes.txt (nothing was written)
 

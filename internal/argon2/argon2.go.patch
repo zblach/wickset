@@ -1,0 +1,70 @@
+--- x/crypto v0.59.0 argon2/argon2.go
++++ internal/argon2/argon2.go
+@@ -38,6 +38,7 @@
+ package argon2
+ 
+ import (
++	"context"
+ 	"encoding/binary"
+ 	"sync"
+ 
+@@ -102,7 +103,18 @@
+ 	return deriveKey(argon2id, password, salt, nil, nil, time, memory, threads, keyLen)
+ }
+ 
++// IDKeyContext is IDKey, except that it stops at the next sync point (a
++// quarter pass) once ctx is done, and returns ctx's error. [chainlock]
++func IDKeyContext(ctx context.Context, password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) ([]byte, error) {
++	return deriveKeyContext(ctx, argon2id, password, salt, nil, nil, time, memory, threads, keyLen)
++}
++
+ func deriveKey(mode int, password, salt, secret, data []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
++	key, _ := deriveKeyContext(context.Background(), mode, password, salt, secret, data, time, memory, threads, keyLen) // [chainlock]
++	return key
++}
++
++func deriveKeyContext(ctx context.Context, mode int, password, salt, secret, data []byte, time, memory uint32, threads uint8, keyLen uint32) ([]byte, error) { // [chainlock]
+ 	if time < 1 {
+ 		panic("argon2: number of rounds too small")
+ 	}
+@@ -116,8 +128,10 @@
+ 		memory = 2 * syncPoints * uint32(threads)
+ 	}
+ 	B := initBlocks(&h0, memory, uint32(threads))
+-	processBlocks(B, time, memory, uint32(threads), mode)
+-	return extractKey(B, memory, uint32(threads), keyLen)
++	if err := processBlocks(ctx, B, time, memory, uint32(threads), mode); err != nil {
++		return nil, err
++	}
++	return extractKey(B, memory, uint32(threads), keyLen), nil
+ }
+ 
+ const (
+@@ -180,7 +194,7 @@
+ 	return B
+ }
+ 
+-func processBlocks(B []block, time, memory, threads uint32, mode int) {
++func processBlocks(ctx context.Context, B []block, time, memory, threads uint32, mode int) error {
+ 	lanes := memory / threads
+ 	segments := lanes / syncPoints
+ 
+@@ -231,6 +245,9 @@
+ 
+ 	for n := uint32(0); n < time; n++ {
+ 		for slice := uint32(0); slice < syncPoints; slice++ {
++			if err := ctx.Err(); err != nil { // [chainlock]
++				return err
++			}
+ 			var wg sync.WaitGroup
+ 			for lane := uint32(0); lane < threads; lane++ {
+ 				wg.Add(1)
+@@ -239,7 +256,7 @@
+ 			wg.Wait()
+ 		}
+ 	}
+-
++	return nil
+ }
+ 
+ func extractKey(B []block, memory, threads, keyLen uint32) []byte {

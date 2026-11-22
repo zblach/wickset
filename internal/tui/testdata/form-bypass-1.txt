@@ -1,5 +1,5 @@
 
-   chainlock   sequential-delay lock
+   chainlock
 
   Bypass  Open a locked file at once with its saved key
 

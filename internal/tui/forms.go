@@ -15,6 +15,10 @@ import (
 	"chainlock/internal/store"
 )
 
+// cores is what the forms say of the machine's cores: a variable, so tests
+// draw the forms the same on any machine.
+var cores = runtime.GOMAXPROCS(0)
+
 // submitMsg and backMsg are a form's submit and cancel.
 type (
 	submitMsg struct{}
@@ -42,7 +46,7 @@ func newForm(act action, in *inputs, page int) *huh.Form {
 			"Keep it somewhere other than the lock.")
 	algorithm := huh.NewSelect[alg.ID]().Title("Algorithm").Options(algOptions()...).Value(&in.Alg)
 	workers := huh.NewInput().Title("Workers").Value(&in.Workers).Validate(workersValidator).Placeholder("0").CharLimit(4).
-		Description(fmt.Sprintf("Steps computed at once. 0 or -1: one per core (%d here).", runtime.GOMAXPROCS(0)))
+		Description(fmt.Sprintf("Steps computed at once. 0 or -1: one per core (%d here).", cores))
 	lock := "A .lock file (with its .payload next to it), or a .chainlock.tar."
 
 	var fields []huh.Field

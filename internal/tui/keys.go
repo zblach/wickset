@@ -33,13 +33,11 @@ var formKeys = struct {
 }
 
 var runKeys = struct {
-	Cancel, Yes, No, Up, Down key.Binding
+	Cancel, Yes, No key.Binding
 }{
 	Cancel: key.NewBinding(key.WithKeys("esc", "ctrl+c", "q"), key.WithHelp("esc", "cancel")),
 	Yes:    key.NewBinding(key.WithKeys("y", "Y"), key.WithHelp("y", "cancel")),
 	No:     key.NewBinding(key.WithKeys("n", "N", "esc"), key.WithHelp("n", "keep going")),
-	Up:     key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/↓", "scroll workers")),
-	Down:   key.NewBinding(key.WithKeys("down", "j")),
 }
 
 var resultKeys = struct {

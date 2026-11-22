@@ -170,9 +170,9 @@ func (c *benchCmd) Run(ctx context.Context, env *ops.Env) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%v: %v a step on this machine (one core, fastest of 3)\n\n", b.Alg.ID(), b.Step.Round(time.Millisecond))
+	fmt.Printf("%v: %v a step on one core (fastest of 3)\n\n", b.Alg.ID(), b.Step.Round(time.Millisecond))
 	lipgloss.Println(tui.BenchTable(b))
-	fmt.Printf("\nsealing on all %d cores; they share memory bandwidth, so it takes longer\n", b.Cores)
+	fmt.Printf("\n%s\n", b.Sealing())
 	return nil
 }
 
@@ -180,6 +180,6 @@ type tuiCmd struct {
 	File string `arg:"" optional:"" help:"File to start with: a plaintext to seal, or a lock or payload to open."`
 }
 
-func (c *tuiCmd) Run(ctx context.Context) error {
-	return tui.Run(ctx, c.File)
+func (c *tuiCmd) Run(ctx context.Context, env *ops.Env) error {
+	return tui.Run(ctx, c.File, env.GPU)
 }

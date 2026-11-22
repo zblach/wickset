@@ -1,5 +1,5 @@
 
-   chainlock   sequential-delay lock
+   chainlock
 
   Seal  Lock a file so it opens only after a delay  (1 of 2)
 

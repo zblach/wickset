@@ -5,7 +5,12 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
+
+	"chainlock/internal/argon2"
 )
+
+// A Device is an Argon2id backend like any other, in every build.
+var _ argon2.Hasher = (*Device)(nil)
 
 // TestVendored: hashcat's files are exactly those SHA256SUMS records, so
 // none has been edited, and every file listed is present.
@@ -59,15 +64,14 @@ func TestSource(t *testing.T) {
 // TestJob: the job is chainlock_job_t's size, with the options x/crypto
 // would use.
 func TestJob(t *testing.T) {
-	p := Params{Salt: []byte("chainlock/v1::01"), MemoryKiB: 262145, Passes: 3, KeyLen: 32}
-	j := p.job(5, 32)
-	if len(j) != 12*4+256 {
+	p := argon2.Params{Salt: []byte("chainlock/v1::01"), MemoryKiB: 262145, Passes: 3, KeyLen: 32}
+	if j := job(p, 5, 32); len(j) != 12*4+256 {
 		t.Fatalf("job is %d bytes", len(j))
 	}
-	if p.blocks() != 262144 || (Params{MemoryKiB: 3}).blocks() != 8 {
-		t.Fatalf("blocks %d", p.blocks())
+	if blocks(p) != 262144 || blocks(argon2.Params{MemoryKiB: 3}) != 8 {
+		t.Fatalf("blocks %d", blocks(p))
 	}
-	if p.check(32) != nil || p.check(30) == nil || (Params{Passes: 1, KeyLen: 12}).check(4) == nil {
+	if check(p, 32) != nil || check(p, 30) == nil || check(argon2.Params{Passes: 1, KeyLen: 12}, 4) == nil {
 		t.Fatal("check")
 	}
 }

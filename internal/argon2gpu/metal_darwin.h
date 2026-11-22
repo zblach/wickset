@@ -12,6 +12,10 @@ typedef struct clm_job clm_job;
 clm *clm_open(const char *source, const char *macros, char **err);
 void clm_close(clm *c);
 
+// clm_device_name is the default device's name, malloc'd, or NULL if there is
+// none. It compiles nothing.
+char *clm_device_name(void);
+
 // The device's largest buffer, and the working set it recommends.
 uint64_t clm_max_buffer(clm *c);
 uint64_t clm_working_set(clm *c);

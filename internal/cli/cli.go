@@ -25,6 +25,8 @@ type cli struct {
 	Info   infoCmd   `cmd:"" help:"Show a lock's details and check its files, without solving."`
 	Bench  benchCmd  `cmd:"" help:"Time this machine to see how long locks take."`
 	TUI    tuiCmd    `cmd:"" name:"tui" help:"Do any of the above interactively."`
+
+	GPU bool `name:"gpu" help:"Seal and extend on the GPU (macOS: Metal) instead of CPU workers; one step of each batch is checked on the CPU."`
 }
 
 // exitUsage is the conventional status for a bad invocation; kong's own is 80.
@@ -38,13 +40,15 @@ func Main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	term := newTerminal()
-	k := kong.Parse(&cli{},
+	env := term.env()
+	var c cli
+	k := kong.Parse(&c,
 		kong.Name("chainlock"),
 		kong.Description("Encrypt a file so it can be opened only after a delay (SPEC.md)."),
 		kong.Vars{"algs": algList()},
 		kong.UsageOnError(),
 		kong.BindTo(ctx, (*context.Context)(nil)),
-		kong.Bind(term.env()),
+		kong.Bind(env),
 		kong.Exit(func(code int) {
 			stop()
 			if code == 80 {
@@ -53,6 +57,12 @@ func Main() {
 			os.Exit(code)
 		}),
 	)
+	// The GPU is the program's, for whatever it does: refused at once where
+	// there is none, not when a seal reaches it.
+	if c.GPU && ops.GPUName() == "" {
+		k.Fatalf("--gpu: no GPU in this build or on this machine")
+	}
+	env.GPU = c.GPU
 	err := k.Run()
 	term.close() // a cancelled run leaves its line open
 	k.FatalIfErrorf(err)

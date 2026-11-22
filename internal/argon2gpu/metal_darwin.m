@@ -103,6 +103,16 @@ clm *clm_open(const char *source, const char *macros, char **err) {
   }
 }
 
+char *clm_device_name(void) {
+  @autoreleasepool {
+    id<MTLDevice> dev = MTLCreateSystemDefaultDevice();
+    if (dev == nil) return NULL;
+    char *name = message(dev.name);
+    [dev release];
+    return name;
+  }
+}
+
 uint64_t clm_max_buffer(clm *c) { return c->dev.maxBufferLength; }
 uint64_t clm_working_set(clm *c) { return c->dev.recommendedMaxWorkingSetSize; }
 

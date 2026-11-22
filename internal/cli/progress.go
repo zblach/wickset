@@ -31,6 +31,7 @@ type run struct {
 	start       time.Time
 	done, total int
 	workers     int           // the most seen at once; a solve or a timing is one
+	batch       int           // the largest batch begun, on a GPU; 0 for none
 	stepStart   time.Time     // when the one worker's step under way began
 	eta         time.Duration // as of the last finished step, as the TUI keeps it
 	stop        chan struct{} // ends the redraws
@@ -86,12 +87,15 @@ func (t *terminal) activity(label string, total int) chain.Activity {
 	t.mu.Lock()
 	r := t.runFor(label, total)
 	t.mu.Unlock()
-	return func(w, i int) {
+	return func(w, first, n int) {
 		t.mu.Lock()
 		defer t.mu.Unlock()
 		r.workers = max(r.workers, w+1)
-		if i >= 0 {
+		if first >= 0 {
 			r.stepStart = time.Now()
+		}
+		if n > 1 {
+			r.batch = max(r.batch, n)
 		}
 	}
 }
@@ -150,6 +154,8 @@ func (t *terminal) draw() {
 	line := fmt.Sprintf("%s %d/%d steps (%.2f%%) · elapsed %s", r.label, r.done, r.total,
 		100*float64(r.done)/float64(max(r.total, 1)), ops.Span(time.Since(r.start)))
 	switch {
+	case r.batch > 0:
+		line += fmt.Sprintf(" · GPU, batches of %d", r.batch)
 	case r.workers > 1:
 		line += fmt.Sprintf(" · %d workers", r.workers)
 	case !r.stepStart.IsZero() && r.done < r.total:

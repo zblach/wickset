@@ -1,0 +1,10 @@
+
+   chainlock
+
+  Sealing notes.txt
+  sealing  ████████████████████████████████████████░░░░░░░░░░ 40.0%  12/30 steps
+  batch 2  ▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 15.0s of ~40.0s
+  elapsed 1m0s · GPU, batches of 12 · 3.3s a step · eta 1m0s
+
+  esc cancel
+

@@ -1,5 +1,5 @@
 
-   chainlock   sequential-delay lock
+   chainlock
 
   ✗ Checking notes.txt failed
   notes.txt: chainlock: malformed object
