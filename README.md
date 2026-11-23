@@ -14,18 +14,26 @@ hidden at the end of a **wick**, a chain of hash steps, and the only way to
 recover it is to compute every step, in order.
 
 ```
-seal   I[0]  I[1]  …  I[N]      random inputs, all hashed at once
-         H     H   …    H       published: each output XOR the previous input, plus I[N]
+seal   O[k] = H(I[k]) for random inputs I[0] … I[N]: every step at once
 
-burn   I[N] ─H→ I[N-1] ─H→ … ─H→ I[0] ─H→ S    one step at a time
+       block:   0          1               …   N               N+1
+       wick  =  S ⊕ O[0] ‖ I[0] ⊕ O[1]   ‖ … ‖ I[N-1] ⊕ O[N] ‖ I[N]
+
+burn   start from I[N], the last block; each step hashes it and unmasks the block before:
+       I[k-1] = block k ⊕ H(I[k])  for k = N, N-1, … 1,  and finally  S = block 0 ⊕ H(I[0])
 ```
+
+Each input has its own output: the same step function `H`, applied to
+different random inputs. Every block but the last is masked by an output
+nobody can know without computing it, so the blocks unlock only in order,
+from the end back to `S`.
 
 The asymmetry is in the computing, not in the keys. The sealer picks every
 step's input, so every step can be computed side by side, on every core or
 thousands of GPU threads at once. The opener must feed each step's output
 into the next, so no amount of extra hardware helps: opening takes as long
-as the steps take on one fast core. Sealing a two-week wick on a GPU takes
-hours.
+as the steps take on one fast core. A two-week wick seals in about 16 hours
+on an Apple M5's GPU ([docs/parameters.md](docs/parameters.md)).
 
 * **No trusted party.** Nobody holds the key during the delay; the delay is
   the work itself.
@@ -36,7 +44,30 @@ hours.
   sooner, and a dedicated chip could burn much sooner. Treat a delay as a
   floor on effort, not a schedule.
 
-[SPEC.md](SPEC.md) defines the wick; [CONTAINER.md](CONTAINER.md) the files.
+### What's in a `.wick` file
+
+| bytes | field | |
+|---|---|---|
+| 8 | magic | `\0WS-WICK` |
+| 1 | format version | `01` |
+| 32 | digest | SHA-256 of every byte after it (the algorithm byte and the blocks), so damage is caught before any burning. The `.payload` carries its own. |
+| 1 | algorithm | `0x01`–`0x04` |
+| 32 × (N+2) | blocks 0 … N+1 | as in the diagram above |
+
+`--raw` writes the wick alone, from the algorithm byte on, with no header.
+
+* **Size:** 32 bytes a step, about 3 MB for 100,000 steps.
+* **It holds the key**, masked in block 0. The delay is all that guards it:
+  anyone with the wick and the time can burn it.
+* **Extending leaves a shortcut.** A shorter copy from before an extension
+  burns to the same key sooner, so keep that one private.
+* **A partial burn is a wick too.** Burned down to I[k], blocks 0 … k
+  followed by I[k] are a valid wick with fewer steps left.
+* **The `.payload`** beside it is the encrypted file, tagged with an id that
+  ties it to its wick, so a mismatched pair is refused before any burning.
+
+[SPEC.md](SPEC.md) defines the wick, byte by byte; [CONTAINER.md](CONTAINER.md)
+the files.
 
 ## Uses
 
