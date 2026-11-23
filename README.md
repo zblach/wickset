@@ -85,8 +85,21 @@ completion.
 [examples/](examples/) holds a sample wick for each algorithm, each 10 to 15
 seconds to burn. [docs/parameters.md](docs/parameters.md) explains the four
 step functions, how they were chosen, and why you should never seal on
-someone else's hardware. [benchmarks/](benchmarks/) collects step times from
-other machines; `wickset bench --csv` adds yours.
+someone else's hardware.
+
+## Benchmarking
+
+How long a wick takes depends on the opener's hardware, so step times from
+many machines say more than any one. [benchmarks/scores.csv](benchmarks/scores.csv)
+collects them; [benchmarks/README.md](benchmarks/README.md) explains the
+columns. To add yours, on an otherwise idle machine:
+
+    for a in 1 2 3 4; do wickset --cpu bench --csv --alg $a; done | awk 'NR==1 || !/^date,/'
+
+With a GPU wickset can use, run the four again without `--cpu`. Append the
+rows (not the header) to `scores.csv` and open a pull request with the
+[benchmark template](.github/PULL_REQUEST_TEMPLATE/benchmark.md), by adding
+`?template=benchmark.md` to the pull request's URL.
 
 ## Library
 
