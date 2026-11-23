@@ -10,6 +10,7 @@ send the rows.
 | column | meaning |
 |---|---|
 | `date`, `version` | when, and `wickset --version`'s release |
+| `source` | where it ran, if not someone's own machine: a CI runner, its image, and the run that measured it (filled in by `--csv` in GitHub Actions). Runners are small shared VMs: their rows are reference points, not measurements |
 | `os`, `arch`, `cpu`, `cores` | the machine (`cpu` may be empty on Linux on Arm) |
 | `gpu` | the machine's GPU, if wickset can seal on it, whether or not this row did |
 | `argon2` | the Argon2id implementation: `x/crypto`, or `libsodium VERSION` |

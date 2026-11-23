@@ -1,11 +1,27 @@
-date,version,os,arch,cpu,cores,gpu,argon2,alg,step_s,step_timing,seal_on,at_once,seal_steps_per_s,speed_up
-2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,x/crypto,argon2id-m128M-t5-p1,0.2148,"as libsodium runs it, 1.42× ours",cpu,10,13.59,2.92
-2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,x/crypto,argon2id-m128M-t192-p1,9.059,"as libsodium runs it, 1.42× ours",cpu,10,0.3362,3.046
-2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,x/crypto,sha256-iter-k24,0.3587,at this core's full SHA-256 rate,cpu,10,11.84,4.245
-2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,x/crypto,sha256-iter-k29,11.57,at this core's full SHA-256 rate,cpu,10,0.3888,4.5
-2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,x/crypto,argon2id-m128M-t5-p1,0.2321,"as libsodium runs it, 1.42× ours",gpu,98,27.66,6.422
-2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,x/crypto,argon2id-m128M-t192-p1,8.951,"as libsodium runs it, 1.42× ours",gpu,98,1.36,12.17
-2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,x/crypto,sha256-iter-k24,0.3709,at this core's full SHA-256 rate,gpu,65536,56.67,21.02
-2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,x/crypto,sha256-iter-k29,11.93,at this core's full SHA-256 rate,gpu,65536,1.775,21.17
-2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,libsodium 1.0.22,argon2id-m128M-t5-p1,0.2273,on libsodium 1.0.22,cpu,10,15.32,3.483
-2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,darwin,arm64,Apple M5,10,Apple M5,libsodium 1.0.22,argon2id-m128M-t192-p1,8.389,on libsodium 1.0.22,cpu,10,0.5162,4.33
+date,version,source,os,arch,cpu,cores,gpu,argon2,alg,step_s,step_timing,seal_on,at_once,seal_steps_per_s,speed_up
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,x/crypto,argon2id-m128M-t5-p1,0.2148,"as libsodium runs it, 1.42× ours",cpu,10,13.59,2.92
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,x/crypto,argon2id-m128M-t192-p1,9.059,"as libsodium runs it, 1.42× ours",cpu,10,0.3362,3.046
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,x/crypto,sha256-iter-k24,0.3587,at this core's full SHA-256 rate,cpu,10,11.84,4.245
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,x/crypto,sha256-iter-k29,11.57,at this core's full SHA-256 rate,cpu,10,0.3888,4.5
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,x/crypto,argon2id-m128M-t5-p1,0.2321,"as libsodium runs it, 1.42× ours",gpu,98,27.66,6.422
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,x/crypto,argon2id-m128M-t192-p1,8.951,"as libsodium runs it, 1.42× ours",gpu,98,1.36,12.17
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,x/crypto,sha256-iter-k24,0.3709,at this core's full SHA-256 rate,gpu,65536,56.67,21.02
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,x/crypto,sha256-iter-k29,11.93,at this core's full SHA-256 rate,gpu,65536,1.775,21.17
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,libsodium 1.0.22,argon2id-m128M-t5-p1,0.2273,on libsodium 1.0.22,cpu,10,15.32,3.483
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,libsodium 1.0.22,argon2id-m128M-t192-p1,8.389,on libsodium 1.0.22,cpu,10,0.5162,4.33
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (macos-15-arm64 20261118.0550.1), run 45091321121",darwin,arm64,Apple M2 Pro (Virtual),5,Apple Paravirtual device,libsodium 1.0.22,argon2id-m128M-t5-p1,0.3011,on libsodium 1.0.22,cpu,5,10.99,3.31
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (macos-15-arm64 20261118.0550.1), run 45091321121",darwin,arm64,Apple M2 Pro (Virtual),5,Apple Paravirtual device,libsodium 1.0.22,argon2id-m128M-t192-p1,11.37,on libsodium 1.0.22,cpu,5,0.3461,3.937
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (macos-15-arm64 20261118.0550.1), run 45091321121",darwin,arm64,Apple M2 Pro (Virtual),5,Apple Paravirtual device,libsodium 1.0.22,sha256-iter-k24,0.4448,at this core's full SHA-256 rate,cpu,5,7.124,3.168
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (macos-15-arm64 20261118.0550.1), run 45091321121",darwin,arm64,Apple M2 Pro (Virtual),5,Apple Paravirtual device,libsodium 1.0.22,sha256-iter-k29,14.43,at this core's full SHA-256 rate,cpu,5,0.2222,3.205
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (ubuntu-24.04 20261116.376.1), run 45091321121",linux,amd64,AMD EPYC 9V74 80-Core Processor,2,,libsodium 1.0.18,argon2id-m128M-t5-p1,0.271,on libsodium 1.0.18,cpu,2,5.218,1.414
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (ubuntu-24.04 20261116.376.1), run 45091321121",linux,amd64,AMD EPYC 9V74 80-Core Processor,2,,libsodium 1.0.18,argon2id-m128M-t192-p1,8.212,on libsodium 1.0.18,cpu,2,0.1873,1.538
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (ubuntu-24.04 20261116.376.1), run 45091321121",linux,amd64,AMD EPYC 9V74 80-Core Processor,2,,libsodium 1.0.18,sha256-iter-k24,0.5943,at this core's full SHA-256 rate,cpu,2,2.34,1.391
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (ubuntu-24.04 20261116.376.1), run 45091321121",linux,amd64,AMD EPYC 9V74 80-Core Processor,2,,libsodium 1.0.18,sha256-iter-k29,19.02,at this core's full SHA-256 rate,cpu,2,0.07213,1.372
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (ubuntu-24.04-arm 20261116.188.1), run 45091321121",linux,arm64,,2,,libsodium 1.0.18,argon2id-m128M-t5-p1,0.4671,on libsodium 1.0.18,cpu,2,2.984,1.394
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (ubuntu-24.04-arm 20261116.188.1), run 45091321121",linux,arm64,,2,,libsodium 1.0.18,argon2id-m128M-t192-p1,17.23,on libsodium 1.0.18,cpu,2,0.112,1.929
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (ubuntu-24.04-arm 20261116.188.1), run 45091321121",linux,arm64,,2,,libsodium 1.0.18,sha256-iter-k24,0.5118,at this core's full SHA-256 rate,cpu,2,3.004,1.538
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (ubuntu-24.04-arm 20261116.188.1), run 45091321121",linux,arm64,,2,,libsodium 1.0.18,sha256-iter-k29,16.28,at this core's full SHA-256 rate,cpu,2,0.09507,1.548
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (windows-2025-vs2026 20261116.315.1), run 45091321121",windows,amd64,,2,,x/crypto,argon2id-m128M-t5-p1,0.2814,"as libsodium runs it, 1.42× ours",cpu,2,3.06,0.8609
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (windows-2025-vs2026 20261116.315.1), run 45091321121",windows,amd64,,2,,x/crypto,argon2id-m128M-t192-p1,11.61,"as libsodium runs it, 1.42× ours",cpu,2,0.08216,0.9538
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (windows-2025-vs2026 20261116.315.1), run 45091321121",windows,amd64,,2,,x/crypto,sha256-iter-k24,0.6892,at this core's full SHA-256 rate,cpu,2,1.967,1.356
+2026-11-23,v0.1.0-rc.3,"github-hosted runner (windows-2025-vs2026 20261116.315.1), run 45091321121",windows,amd64,,2,,x/crypto,sha256-iter-k29,22.03,at this core's full SHA-256 rate,cpu,2,0.06203,1.367

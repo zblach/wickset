@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"cmp"
 	"encoding/csv"
 	"io"
+	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"wickset/internal/ops"
@@ -15,8 +18,23 @@ import (
 // it found. step_s is as the fastest opener runs a step, step_timing says
 // how (empty: as this build runs it); speed_up is the seal:open ratio.
 var benchColumns = []string{
-	"date", "version", "os", "arch", "cpu", "cores", "gpu", "argon2",
+	"date", "version", "source", "os", "arch", "cpu", "cores", "gpu", "argon2",
 	"alg", "step_s", "step_timing", "seal_on", "at_once", "seal_steps_per_s", "speed_up",
+}
+
+// benchSource says where a row was measured, where that is not someone's own
+// machine: a CI runner, a small shared VM whose rows are reference points
+// rather than measurements, with the run that measured them. Empty
+// otherwise.
+func benchSource() string {
+	if os.Getenv("GITHUB_ACTIONS") != "true" {
+		return ""
+	}
+	kind := cmp.Or(os.Getenv("RUNNER_ENVIRONMENT"), "github") + " runner"
+	if img := strings.TrimSpace(os.Getenv("ImageOS") + " " + os.Getenv("ImageVersion")); img != "" {
+		kind += " (" + img + ")"
+	}
+	return kind + ", run " + os.Getenv("GITHUB_RUN_ID")
 }
 
 // writeBenchCSV writes b as one row of benchmarks/scores.csv, after the
@@ -37,7 +55,7 @@ func writeBenchCSV(w io.Writer, b ops.Bench) error {
 	cw := csv.NewWriter(w)
 	cw.Write(benchColumns)
 	cw.Write([]string{
-		time.Now().UTC().Format(time.DateOnly), Version(), runtime.GOOS, runtime.GOARCH,
+		time.Now().UTC().Format(time.DateOnly), Version(), benchSource(), runtime.GOOS, runtime.GOARCH,
 		cpuName(), strconv.Itoa(runtime.NumCPU()), ops.GPUName(), argon2,
 		b.Alg.Name(), f(b.Step.Seconds()), b.StepTiming(), sealOn, strconv.Itoa(atOnce), f(rate), f(b.SpeedUp()),
 	})
