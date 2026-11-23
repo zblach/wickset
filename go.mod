@@ -1,8 +1,6 @@
 module github.com/zblach/wickset
 
-go 1.26.0
-
-toolchain go1.27.4
+go 1.27.4
 
 require (
 	charm.land/bubbles/v2 v2.2.2
