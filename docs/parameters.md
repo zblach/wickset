@@ -23,16 +23,22 @@ without, keeping memory-hardness where that speed isn't on offer.
 ## Measurements
 
 Measured on an Apple M5 (4 performance and 6 efficiency cores, 10 GPU cores,
-32 GB, on mains power), with `wickset --cpu bench` and `wickset bench`.
-**These predate the current SHA-256 step counts and the fastest-opener
-timing below, and are due to be re-measured.**
+32 GB, on mains power) with `wickset bench --csv`, on and off the GPU; every
+number is a row of [benchmarks/scores.csv](../benchmarks/scores.csv).
+Argon2id is from the libsodium build, which times a step directly; a step is
+always timed as the fastest opener runs it (below).
 
-| | step | all cores | ratio | GPU | ratio | 8 h / 2 w seal, GPU |
-|---|---|---|---|---|---|---|
-| `0x01` | 0.30 s | 15.7 steps/s | 4.7 | 41 steps/s, 98 at once | 12 | 40 min |
-| `0x02` | 11.4 s | 0.4 steps/s | 4.6 | 1.5 steps/s, 98 at once | 17 | 20 h |
-| `0x03` | 0.33 s | 19.0 steps/s | 6.3 | 129 steps/s, ~262 k at once | 43 | 11 min |
-| `0x04` | 10.9 s | 0.6 steps/s | 6.6 | 3.9 steps/s, ~131 k at once | 43 | 8 h |
+| | step | all cores | ratio | GPU | ratio | 8 h / 2 w seal: cores | GPU |
+|---|---|---|---|---|---|---|---|
+| `0x01` | 0.23 s | 15.3 steps/s | 3.5 | 34.6 steps/s, 98 at once | 6.9 | 2.3 h | 70 min |
+| `0x02` | 8.4 s | 0.52 steps/s | 4.3 | 1.42 steps/s, 98 at once | 11.4 | 3.2 d | 29 h |
+| `0x03` | 0.36 s | 11.8 steps/s | 4.2 | 56.7 steps/s, 65,536 at once | 21.0 | 1.9 h | 23 min |
+| `0x04` | 11.6 s | 0.39 steps/s | 4.5 | 1.78 steps/s, 65,536 at once | 21.2 | 3.1 d | 16 h |
+
+A ratio is the sealing rate times the step: a seal takes the delay divided
+by it. GitHub's runners, two shared vCPUs each, manage ratios of only 1.4 to
+1.9 on their cores: sealing gains with every core and GPU thread, opening
+with none.
 
 The batch sizes are this machine's, not settings. Argon2id batches are as
 many steps as fit the GPU memory budget (`--gpu-memory`, half by default).
@@ -62,11 +68,29 @@ best there is.
 
 The sealer and the opener are seldom the same person, and an opener can
 bring a faster implementation. So seal times a step as the fastest known one
-runs it: iterated SHA-256 at this core's full compression rate; Argon2id at
-libsodium's speed, about 1.42× x/crypto's pure Go on arm64 (measured on an
-M5; assumed on amd64, where x/crypto has assembly). An opener using wickset
-itself takes a little longer than the delay. Built with `-tags libsodium`,
-wickset runs Argon2id at that speed too, and times it directly.
+runs it: iterated SHA-256 at this core's full compression rate, which a
+tight loop reaches and ours nearly does; Argon2id at libsodium's speed. An
+opener using wickset itself takes a little longer than the delay.
+
+A build with libsodium (`-tags libsodium`, as the release binaries are)
+runs Argon2id on it and times it directly. A build without it divides its
+own time by **×1.72, the largest lead libsodium has been measured to have**
+over x/crypto:
+
+| machine | libsodium | `0x01` | `0x02` |
+|---|---|---|---|
+| Apple M5 | 1.0.22 | ×1.34 | ×1.53 |
+| AMD EPYC 7763 (2 vCPU) | 1.0.18 | ×1.34 | **×1.72** |
+| GitHub's Arm runner (2 vCPU) | 1.0.18 | ×1.23 | ×1.34 |
+
+The lead varies by machine, by libsodium version and by step (the long
+step's is the larger everywhere), so any single figure is wrong somewhere.
+The two ways of being wrong are not alike: a lead set too high makes a delay
+longer than it need be, which costs the sealer some patience; one set too
+low lets an opener with libsodium in early, which defeats the delay. So the
+largest measured is taken. It overstates the short step's delay by a
+quarter on most machines; where that matters, use a build with libsodium.
+As more machines are benched, the figure is revisited.
 
 ## Delegating a seal hands over the key
 

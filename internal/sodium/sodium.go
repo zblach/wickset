@@ -1,8 +1,9 @@
 //go:build libsodium && cgo
 
 // Package sodium is libsodium's Argon2id, for builds that want it (-tags
-// libsodium, and cgo): it runs a step ~1.4× faster than x/crypto's pure Go
-// on arm64, so a wick opens as fast as a capable opener's would. Elsewhere it
+// libsodium, and cgo): it runs a step 1.2–1.7× faster than x/crypto (as
+// measured: benchmarks/scores.csv), so a wick opens as fast as a capable
+// opener's would, and seal times its steps directly. Elsewhere it
 // reports itself absent (stub.go), and x/crypto's does the work.
 //
 // libsodium takes salts of exactly 16 bytes; wickset's are (SPEC.md §3.1).

@@ -20,7 +20,7 @@ type Params struct {
 }
 
 // Key is IDKeyContext for p: in a build with libsodium (internal/sodium),
-// libsodium's, ~1.4× faster on arm64, for a salt of the length it takes.
+// libsodium's, 1.2–1.7× faster, for a salt of the length it takes.
 func (p Params) Key(ctx context.Context, input []byte) ([]byte, error) {
 	if sodium.Built && len(p.Salt) == sodium.SaltBytes {
 		return sodiumKey(ctx, p, input)

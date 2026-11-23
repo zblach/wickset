@@ -9,6 +9,8 @@ date,version,source,os,arch,cpu,cores,gpu,argon2,alg,step_s,step_timing,seal_on,
 2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,x/crypto,sha256-iter-k29,11.93,at this core's full SHA-256 rate,gpu,65536,1.775,21.17
 2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,libsodium 1.0.22,argon2id-m128M-t5-p1,0.2273,on libsodium 1.0.22,cpu,10,15.32,3.483
 2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,libsodium 1.0.22,argon2id-m128M-t192-p1,8.389,on libsodium 1.0.22,cpu,10,0.5162,4.33
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,libsodium 1.0.22,argon2id-m128M-t5-p1,0.1983,on libsodium 1.0.22,gpu,98,34.57,6.854
+2026-11-22,v0.0.0-20261122181743-7644168201b2+dirty,,darwin,arm64,Apple M5,10,Apple M5,libsodium 1.0.22,argon2id-m128M-t192-p1,8.049,on libsodium 1.0.22,gpu,98,1.42,11.43
 2026-11-23,v0.1.0-rc.3,"github-hosted runner (macos-15-arm64 20261118.0550.1), run 45091321121",darwin,arm64,Apple M2 Pro (Virtual),5,Apple Paravirtual device,libsodium 1.0.22,argon2id-m128M-t5-p1,0.3011,on libsodium 1.0.22,cpu,5,10.99,3.31
 2026-11-23,v0.1.0-rc.3,"github-hosted runner (macos-15-arm64 20261118.0550.1), run 45091321121",darwin,arm64,Apple M2 Pro (Virtual),5,Apple Paravirtual device,libsodium 1.0.22,argon2id-m128M-t192-p1,11.37,on libsodium 1.0.22,cpu,5,0.3461,3.937
 2026-11-23,v0.1.0-rc.3,"github-hosted runner (macos-15-arm64 20261118.0550.1), run 45091321121",darwin,arm64,Apple M2 Pro (Virtual),5,Apple Paravirtual device,libsodium 1.0.22,sha256-iter-k24,0.4448,at this core's full SHA-256 rate,cpu,5,7.124,3.168

@@ -55,11 +55,14 @@ func cpuPart(ctx context.Context, a alg.Alg, x []byte, partway alg.Partway) (flo
 	return 1, err
 }
 
-// argon2Lead is how much faster libsodium 1.0.22 runs an Argon2id pass than
-// x/crypto does here: 40 ms against 57 ms over 128 MiB on an Apple M5
-// (arm64). On amd64, where x/crypto has assembly, it is likely less, but
-// unmeasured; the same lead is assumed, erring toward a longer delay.
-const argon2Lead = 1.42
+// argon2Lead is how much faster libsodium runs an Argon2id step than
+// x/crypto does: the most measured on any machine (benchmarks/scores.csv),
+// 0x02's on an AMD EPYC 7763. The lead varies by machine and step (×1.23 to
+// ×1.72 measured; the long step's is always the larger), and a delay is
+// timed against the fastest opener, so the largest is taken: a lead set too
+// high makes a delay longer than it need be, one set too low lets an opener
+// in early. A build with libsodium times its steps directly instead.
+const argon2Lead = 1.72
 
 // openTiming says how openPart times a's step, where it is not simply as
 // this build runs it; "" where it is.
@@ -90,8 +93,8 @@ func openTiming(a alg.Alg) string {
 // Argon2id the same: libsodium runs it faster than x/crypto's, which is pure
 // Go on arm64 (its assembly is amd64's). Built with libsodium (-tags
 // libsodium), a step runs on it (argon2.Params.Key) and is timed as it
-// runs; otherwise our time is divided by libsodium's measured lead,
-// argon2Lead.
+// runs; otherwise our time is divided by the largest lead libsodium has
+// been measured to have, argon2Lead.
 func openPart(ctx context.Context, a alg.Alg, x []byte, partway alg.Partway) (float64, error) {
 	if _, ok := alg.Argon2idParams(a); ok && !sodium.Built {
 		share, err := cpuPart(ctx, a, x, partway)
