@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"wickset/alg"
+	"github.com/zblach/wickset/alg"
 )
 
 // zeroObject is a well-formed 0x01 wick with N = 1. Loading it evaluates no

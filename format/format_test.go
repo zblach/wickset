@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	"wickset/alg"
-	"wickset/wick"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/wick"
 )
 
 // object is a raw wick of 0x01 with N+1 = blocks-1 steps, block 0 filled

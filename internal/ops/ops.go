@@ -12,11 +12,11 @@ import (
 	"os"
 	"time"
 
-	"wickset"
-	"wickset/alg"
-	"wickset/format"
-	"wickset/internal/store"
-	"wickset/wick"
+	"github.com/zblach/wickset"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/format"
+	"github.com/zblach/wickset/internal/store"
+	"github.com/zblach/wickset/wick"
 )
 
 // SealArgs seals File behind a wick of N+1 steps, or, if Delay is set, as many steps

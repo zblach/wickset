@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"wickset/internal/ops"
+	"github.com/zblach/wickset/internal/ops"
 )
 
 // The form fields' validators, and the parsing they share with args.

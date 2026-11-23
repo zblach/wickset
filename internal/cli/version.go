@@ -8,12 +8,12 @@ import (
 
 	"github.com/alecthomas/kong"
 
-	"wickset/internal/ops"
-	"wickset/internal/sodium"
+	"github.com/zblach/wickset/internal/ops"
+	"github.com/zblach/wickset/internal/sodium"
 )
 
 // version is the release, set at link time for builds that are not of a
-// tagged module (-ldflags "-X wickset/internal/cli.version=v0.1.0"). Empty,
+// tagged module (-ldflags "-X github.com/zblach/wickset/internal/cli.version=v0.1.0"). Empty,
 // it comes from the build info: the tag for go install of a release, or a
 // pseudo-version from the checkout for go build.
 var version string

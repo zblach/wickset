@@ -3,7 +3,7 @@ package wick
 import (
 	"context"
 
-	"wickset/alg"
+	"github.com/zblach/wickset/alg"
 )
 
 // Solve burns the wick o from I[N] down to S (SPEC.md §6): N+1 sequential

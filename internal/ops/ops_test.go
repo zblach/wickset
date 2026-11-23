@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"wickset/alg"
-	"wickset/wick"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/wick"
 )
 
 // fakeAlg is a free step, enough for code that only times or counts steps.

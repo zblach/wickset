@@ -10,7 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"wickset/alg"
+	"github.com/zblach/wickset/alg"
 )
 
 // A Report is told what a run of evaluations of H does, as it does it: New,

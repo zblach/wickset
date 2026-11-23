@@ -22,7 +22,7 @@ import (
 	"time"
 	"unsafe"
 
-	"wickset/internal/argon2"
+	"github.com/zblach/wickset/internal/argon2"
 )
 
 // Built reports whether this build has a GPU backend: Metal, here.

@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"wickset/format"
-	"wickset/wick"
+	"github.com/zblach/wickset/format"
+	"github.com/zblach/wickset/wick"
 )
 
 // File names pair by convention: seal writes FILE.wick and FILE.payload,

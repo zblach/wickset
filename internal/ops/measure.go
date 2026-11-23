@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"wickset/alg"
-	"wickset/internal/sodium"
-	"wickset/wick"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/internal/sodium"
+	"github.com/zblach/wickset/wick"
 )
 
 // LongDelay is the delay from which a seal with no algorithm given uses the

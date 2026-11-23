@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"wickset/alg"
-	"wickset/internal/ops"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/internal/ops"
 )
 
 // TestSubmitLink: the link opens the benchmark issue form with this

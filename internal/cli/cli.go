@@ -14,7 +14,7 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/willabides/kongplete"
 
-	"wickset/internal/ops"
+	"github.com/zblach/wickset/internal/ops"
 )
 
 // cli is the command tree. Each command is a struct in commands.go whose

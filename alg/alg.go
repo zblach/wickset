@@ -11,8 +11,8 @@ import (
 	"runtime"
 	"slices"
 
-	"wickset/internal/argon2"
-	"wickset/internal/sha256iter"
+	"github.com/zblach/wickset/internal/argon2"
+	"github.com/zblach/wickset/internal/sha256iter"
 )
 
 // ErrUnknown reports an ALG_ID that is not defined in this build.

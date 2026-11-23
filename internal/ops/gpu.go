@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"wickset/alg"
-	"wickset/internal/gpu"
-	"wickset/wick"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/internal/gpu"
+	"github.com/zblach/wickset/wick"
 )
 
 // device is the process's GPU, opened (and its kernels compiled) on first use.

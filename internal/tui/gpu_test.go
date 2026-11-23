@@ -8,7 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"wickset/internal/ops"
+	"github.com/zblach/wickset/internal/ops"
 )
 
 // TestGPUTitle: the title says wickset[gpu] when the TUI was started with

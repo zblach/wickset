@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"wickset/wick"
+	"github.com/zblach/wickset/wick"
 )
 
 var t0 = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)

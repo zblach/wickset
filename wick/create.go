@@ -3,7 +3,7 @@ package wick
 import (
 	"context"
 
-	"wickset/alg"
+	"github.com/zblach/wickset/alg"
 )
 
 // New draws a fresh random S and builds a wick hiding it behind n+1

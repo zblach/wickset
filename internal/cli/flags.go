@@ -10,9 +10,9 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/posener/complete"
 
-	"wickset/alg"
-	"wickset/internal/ops"
-	"wickset/internal/store"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/internal/ops"
+	"github.com/zblach/wickset/internal/store"
 )
 
 // outputMapper reads an output path, as the types "outfile" and "keyfile"

@@ -7,7 +7,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 
-	"wickset/wick"
+	"github.com/zblach/wickset/wick"
 )
 
 // The payload layer is outside the wick format (SPEC.md §9, informative). Its

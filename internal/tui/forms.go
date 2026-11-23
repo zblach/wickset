@@ -10,9 +10,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 
-	"wickset/alg"
-	"wickset/internal/ops"
-	"wickset/internal/store"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/internal/ops"
+	"github.com/zblach/wickset/internal/store"
 )
 
 // cores is what the forms say of the machine's cores: a variable, so tests

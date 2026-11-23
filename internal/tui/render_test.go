@@ -15,9 +15,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"wickset/alg"
-	"wickset/internal/ops"
-	"wickset/internal/store"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/internal/ops"
+	"github.com/zblach/wickset/internal/store"
 )
 
 var dump = flag.String("screens", "", "write every synthetic screen to this directory, to read a change by")

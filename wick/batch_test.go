@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"wickset/alg"
+	"github.com/zblach/wickset/alg"
 )
 
 // fakeBatcher computes batches from testAlg32, failing its fail'th batch if

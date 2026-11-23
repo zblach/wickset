@@ -19,10 +19,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"wickset/alg"
-	"wickset/internal/ops"
-	"wickset/internal/store"
-	"wickset/wick"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/internal/ops"
+	"github.com/zblach/wickset/internal/store"
+	"github.com/zblach/wickset/wick"
 )
 
 func press(m *model, k tea.KeyPressMsg) {

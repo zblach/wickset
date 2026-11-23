@@ -7,7 +7,7 @@ import (
 	"errors"
 	"math"
 
-	"wickset/alg"
+	"github.com/zblach/wickset/alg"
 )
 
 var (

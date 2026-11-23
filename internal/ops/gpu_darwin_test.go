@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"wickset/alg"
-	"wickset/internal/store"
-	"wickset/wick"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/internal/store"
+	"github.com/zblach/wickset/wick"
 )
 
 // needGPU fails a test without a working GPU, or skips it where

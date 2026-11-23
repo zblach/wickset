@@ -6,7 +6,7 @@ package argon2
 import (
 	"context"
 
-	"wickset/internal/sodium"
+	"github.com/zblach/wickset/internal/sodium"
 )
 
 // Params is one Argon2id parameter set with one lane (threads = 1), as every

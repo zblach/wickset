@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"wickset/internal/ops"
-	"wickset/wick"
+	"github.com/zblach/wickset/internal/ops"
+	"github.com/zblach/wickset/wick"
 )
 
 // events is a solve of two steps, as ops reports one.

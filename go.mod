@@ -1,4 +1,4 @@
-module wickset
+module github.com/zblach/wickset
 
 go 1.26.0
 

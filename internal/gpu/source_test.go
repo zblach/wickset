@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"wickset/internal/argon2"
+	"github.com/zblach/wickset/internal/argon2"
 )
 
 // A Device is an Argon2id backend like any other, in every build.

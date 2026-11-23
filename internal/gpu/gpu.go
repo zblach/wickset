@@ -15,7 +15,7 @@ import (
 	"regexp"
 	"strings"
 
-	"wickset/internal/argon2"
+	"github.com/zblach/wickset/internal/argon2"
 )
 
 // ErrUnavailable reports a build or machine with no supported GPU.

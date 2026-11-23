@@ -8,7 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"wickset/internal/ops"
+	"github.com/zblach/wickset/internal/ops"
 )
 
 // A job is one operation running off the UI goroutine. The operation reports

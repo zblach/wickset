@@ -18,7 +18,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"wickset/internal/ops"
+	"github.com/zblach/wickset/internal/ops"
 )
 
 // Run shows the TUI until the user quits. file, if given, preselects the

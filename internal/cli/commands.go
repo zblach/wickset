@@ -10,9 +10,9 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"wickset/internal/ops"
-	"wickset/internal/store"
-	"wickset/internal/tui"
+	"github.com/zblach/wickset/internal/ops"
+	"github.com/zblach/wickset/internal/store"
+	"github.com/zblach/wickset/internal/tui"
 )
 
 const delayHelp = `--delay is converted to steps using this machine's measured step time. The

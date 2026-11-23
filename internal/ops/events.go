@@ -4,7 +4,7 @@ import (
 	"slices"
 	"time"
 
-	"wickset/wick"
+	"github.com/zblach/wickset/wick"
 )
 
 // An Event is one thing an operation's work did, stamped with when it did

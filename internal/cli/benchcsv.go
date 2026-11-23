@@ -14,9 +14,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"wickset/alg"
-	"wickset/internal/ops"
-	"wickset/internal/sodium"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/internal/ops"
+	"github.com/zblach/wickset/internal/sodium"
 )
 
 // repo is where benchmark submissions go (benchmarks/README.md).

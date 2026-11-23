@@ -3,8 +3,8 @@ package ops
 import (
 	"errors"
 
-	"wickset/internal/store"
-	"wickset/wick"
+	"github.com/zblach/wickset/internal/store"
+	"github.com/zblach/wickset/wick"
 )
 
 var errNoStream = errors.New("'-' is not available here; give the key file a path")

@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"wickset/internal/ops"
-	"wickset/wick"
+	"github.com/zblach/wickset/internal/ops"
+	"github.com/zblach/wickset/wick"
 )
 
 // terminal reports an operation on standard error. Off a terminal (a log, a

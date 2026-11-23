@@ -3,9 +3,9 @@ package wickset
 import (
 	"context"
 
-	"wickset/alg"
-	"wickset/format"
-	"wickset/wick"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/format"
+	"github.com/zblach/wickset/wick"
 )
 
 // SealOpts configures Seal: the algorithm, N, and how the parallel build

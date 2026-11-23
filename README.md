@@ -57,7 +57,8 @@ hours.
 macOS on Apple silicon (GPU sealing), Linux on x86_64 and arm64, and Windows
 (CPU only), each with libsodium built in, and `SHA256SUMS`. On macOS,
 `xattr -d com.apple.quarantine wickset` lets an unsigned download run. Or
-build it: `go install ./cmd/wickset`.
+build it: `go install github.com/zblach/wickset/cmd/wickset@latest` (cgo
+gives the GPU on macOS; add `-tags libsodium` with libsodium installed).
 
     wickset seal -d 8h notes.txt         # 8 hours, on this kind of machine
     wickset info notes.txt.payload       # what it is; do its files pair and check out

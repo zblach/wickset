@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"wickset/alg"
-	"wickset/internal/ops"
-	"wickset/internal/store"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/internal/ops"
+	"github.com/zblach/wickset/internal/store"
 )
 
 // An action is one of the menu's operations.

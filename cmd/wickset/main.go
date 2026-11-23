@@ -11,6 +11,6 @@
 // interactive interface in internal/tui; both run internal/ops.
 package main
 
-import "wickset/internal/cli"
+import "github.com/zblach/wickset/internal/cli"
 
 func main() { cli.Main() }

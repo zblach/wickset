@@ -14,8 +14,8 @@ import (
 
 	xargon2 "golang.org/x/crypto/argon2"
 
-	"wickset/alg"
-	"wickset/internal/argon2"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/internal/argon2"
 )
 
 var (

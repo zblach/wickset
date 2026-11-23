@@ -10,8 +10,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
 
-	"wickset/internal/ops"
-	"wickset/internal/store"
+	"github.com/zblach/wickset/internal/ops"
+	"github.com/zblach/wickset/internal/store"
 )
 
 // Rendering here is pure: a screen is a function of the window width and a

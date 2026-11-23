@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"wickset/alg"
-	"wickset/internal/gpu"
-	"wickset/internal/store"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/internal/gpu"
+	"github.com/zblach/wickset/internal/store"
 )
 
 // noted is an Env that keeps its notes as lines.

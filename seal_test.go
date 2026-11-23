@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"wickset/alg"
-	"wickset/format"
-	"wickset/wick"
+	"github.com/zblach/wickset/alg"
+	"github.com/zblach/wickset/format"
+	"github.com/zblach/wickset/wick"
 )
 
 // countingAlg wraps an Alg and counts evaluations of H.

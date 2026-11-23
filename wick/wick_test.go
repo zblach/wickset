@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"wickset/alg"
+	"github.com/zblach/wickset/alg"
 )
 
 var update = flag.Bool("update", false, "rewrite golden vectors in testdata/")

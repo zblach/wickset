@@ -5,7 +5,7 @@ import (
 	"io"
 	"sync"
 
-	"wickset/alg"
+	"github.com/zblach/wickset/alg"
 )
 
 // Env is how an operation reaches its front end. Every field may be nil.

@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"testing"
 
-	"wickset/alg"
+	"github.com/zblach/wickset/alg"
 )
 
 // Benchmarks for the real algorithms. Run one at a time, so peak RSS belongs

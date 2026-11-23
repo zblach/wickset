@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"os"
 
-	"wickset/wick"
+	"github.com/zblach/wickset/wick"
 )
 
 // maxKeyText bounds a key read from a stream; a key's text is under 64 bytes.
