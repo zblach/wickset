@@ -53,7 +53,11 @@ hours.
 
 ## Using it
 
-    go install ./cmd/wickset
+[Releases](https://github.com/zblach/wickset/releases) have binaries for
+macOS on Apple silicon (GPU sealing), Linux on x86_64 and arm64, and Windows
+(CPU only), each with libsodium built in, and `SHA256SUMS`. On macOS,
+`xattr -d com.apple.quarantine wickset` lets an unsigned download run. Or
+build it: `go install ./cmd/wickset`.
 
     wickset seal -d 8h notes.txt         # 8 hours, on this kind of machine
     wickset info notes.txt.payload       # what it is; do its files pair and check out
@@ -95,14 +99,16 @@ other machines; `wickset bench --csv` adds yours.
     go build ./cmd/wickset                    # cgo: the GPU where there is one
     CGO_ENABLED=0 go build ./cmd/wickset      # pure Go, CPU only
     go build -tags libsodium ./cmd/wickset    # Argon2id on libsodium (installed)
+    CGO_LDFLAGS=/opt/homebrew/lib/libsodium.a \
+      go build -tags "libsodium libsodium_static" ./cmd/wickset   # libsodium built in, as releases are
 
     go test -short ./...
     go test -tags wickset_testalgs ./...      # adds end-to-end tests; never ship this build
 
-All three builds open the same wicks. Releases follow semantic versioning,
-from git tags; `wickset --version` names the release and what the build can
-do (GPU, libsodium). The file format is versioned separately and changes only when the bytes on
-disk do. Vendored code (x/crypto's Argon2id, hashcat's
-GPU kernels, Go's SHA-256 assembly) is pinned by tested checksums.
+All builds open the same wicks. Releases follow semantic versioning, from
+git tags; `wickset --version` names the release and what the build can do
+(GPU, libsodium). The file format is versioned separately and changes only
+when the bytes on disk do. Vendored code (x/crypto's Argon2id, hashcat's GPU
+kernels, Go's SHA-256 assembly) is pinned by tested checksums.
 
 0BSD licensed; see [LICENSE](LICENSE).

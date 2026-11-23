@@ -1,0 +1,95 @@
+# Release binaries for a version tag, with everything each platform can
+# have: the GPU (Metal) on macOS, libsodium's Argon2id linked statically
+# everywhere cgo runs, and a pure-Go build for Windows. A tag with a suffix
+# (v0.1.0-rc.2) makes a prerelease.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: darwin, arch: arm64, runner: macos-15 }
+          - { os: linux, arch: amd64, runner: ubuntu-22.04 } # glibc 2.35 and up
+          - { os: linux, arch: arm64, runner: ubuntu-22.04-arm }
+          - { os: windows, arch: amd64, runner: ubuntu-22.04 } # pure Go: no GPU, no libsodium
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # tags, so the build knows its version
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: libsodium (macOS)
+        if: matrix.os == 'darwin'
+        run: |
+          brew install libsodium
+          echo "CGO_LDFLAGS=$(brew --prefix)/lib/libsodium.a" >> "$GITHUB_ENV"
+          echo "TAGS=libsodium libsodium_static" >> "$GITHUB_ENV"
+      - name: libsodium (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y libsodium-dev
+          echo "CGO_LDFLAGS=/usr/lib/$(gcc -dumpmachine)/libsodium.a" >> "$GITHUB_ENV"
+          echo "TAGS=libsodium libsodium_static" >> "$GITHUB_ENV"
+      - name: pure Go (Windows)
+        if: matrix.os == 'windows'
+        run: echo "CGO_ENABLED=0" >> "$GITHUB_ENV"
+
+      - name: test
+        if: matrix.os != 'windows'
+        run: go test -count=1 -short -tags "$TAGS" ./...
+
+      # Outside the checkout, so the build is not "+dirty".
+      - name: build
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          name="wickset-$GITHUB_REF_NAME-${{ matrix.os }}-${{ matrix.arch }}"
+          dir="$RUNNER_TEMP/$name"
+          mkdir -p "$dir"
+          exe=wickset; [ "$GOOS" = windows ] && exe=wickset.exe
+          go build -trimpath -tags "$TAGS" -o "$dir/$exe" ./cmd/wickset
+          cp LICENSE README.md "$dir/"
+          if [ "$GOOS" != windows ]; then
+            "$dir/$exe" --version | tee -a "$GITHUB_STEP_SUMMARY"
+            [ "$GOOS" = darwin ] && otool -L "$dir/$exe" || ldd "$dir/$exe"
+          fi
+          cd "$RUNNER_TEMP"
+          if [ "$GOOS" = windows ]; then zip -qr "$name.zip" "$name"; else tar czf "$name.tar.gz" "$name"; fi
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/wickset-*.*
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          merge-multiple: true
+          path: dist
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum wickset-* > SHA256SUMS
+          cat SHA256SUMS
+          pre=; case "$GITHUB_REF_NAME" in *-*) pre=--prerelease;; esac
+          gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --verify-tag $pre \
+            --title "wickset $GITHUB_REF_NAME" --generate-notes wickset-* SHA256SUMS

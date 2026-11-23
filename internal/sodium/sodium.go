@@ -6,12 +6,17 @@
 // reports itself absent (stub.go), and x/crypto's does the work.
 //
 // libsodium takes salts of exactly 16 bytes; wickset's are (SPEC.md §3.1).
+//
+// It links the installed shared library (link.go). With the libsodium_static
+// tag as well, it links nothing itself, and the build names the archive:
+//
+//	CGO_LDFLAGS=/opt/homebrew/lib/libsodium.a go build -tags "libsodium libsodium_static" ./cmd/wickset
+//
+// so a release binary runs where libsodium is not installed.
 package sodium
 
 /*
 #cgo darwin CFLAGS: -I/opt/homebrew/include -I/usr/local/include
-#cgo darwin LDFLAGS: -L/opt/homebrew/lib -L/usr/local/lib -lsodium
-#cgo !darwin LDFLAGS: -lsodium
 #include <sodium.h>
 */
 import "C"
