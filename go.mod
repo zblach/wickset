@@ -2,6 +2,8 @@ module wickset
 
 go 1.26.0
 
+toolchain go1.27.4
+
 require (
 	charm.land/bubbles/v2 v2.2.2
 	charm.land/bubbletea/v2 v2.1.2

@@ -70,10 +70,15 @@ jobs:
           fi
           cd "$RUNNER_TEMP"
           if [ "$GOOS" = windows ]; then zip -qr "$name.zip" "$name"; else tar czf "$name.tar.gz" "$name"; fi
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.os }}-${{ matrix.arch }}
-          path: ${{ runner.temp }}/wickset-*.*
+          # The archives only: the directory they were made from is named
+          # alike (wickset-v0.1.0-...), dots and all.
+          path: |
+            ${{ runner.temp }}/wickset-*.tar.gz
+            ${{ runner.temp }}/wickset-*.zip
+          if-no-files-found: error
 
   release:
     needs: build
@@ -81,7 +86,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
           path: dist
@@ -90,11 +95,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd dist
-          sha256sum wickset-* > SHA256SUMS
+          ls -l
+          files=(wickset-*.tar.gz wickset-*.zip)
+          [ "${#files[@]}" -eq 4 ] || { echo "want 4 archives, have ${#files[@]}"; exit 1; }
+          sha256sum "${files[@]}" > SHA256SUMS
           cat SHA256SUMS
           pre=; case "$GITHUB_REF_NAME" in *-*) pre=--prerelease;; esac
           gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --verify-tag $pre \
-            --title "wickset $GITHUB_REF_NAME" --generate-notes wickset-* SHA256SUMS
+            --title "wickset $GITHUB_REF_NAME" --generate-notes "${files[@]}" SHA256SUMS
 
   # Each shipped binary, benched on the CPU on its own platform's runner,
   # after the release is out, so a slow or noisy bench never holds one up.
@@ -118,7 +126,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.os }}-${{ matrix.arch }}
       - name: bench
