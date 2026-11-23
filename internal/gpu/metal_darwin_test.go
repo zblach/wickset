@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -24,7 +25,9 @@ var (
 )
 
 // device is the Metal device, opened once for every test: compiling the
-// kernel takes seconds the first time.
+// kernel takes seconds the first time. One that will not open fails the
+// test, unless WICKSET_NO_GPU says there is none to be had (a CI runner's
+// virtual Mac, which has no Metal): a broken GPU on a real Mac stays loud.
 func device(t testing.TB) *Device {
 	t.Helper()
 	devOnce.Do(func() {
@@ -33,6 +36,9 @@ func device(t testing.TB) *Device {
 		t.Logf("compiled the kernel in %v", time.Since(start).Round(time.Millisecond))
 	})
 	if devErr != nil {
+		if os.Getenv("WICKSET_NO_GPU") != "" {
+			t.Skipf("no GPU (WICKSET_NO_GPU): %v", devErr)
+		}
 		t.Fatal(devErr)
 	}
 	return dev

@@ -48,6 +48,8 @@ jobs:
 
       - name: test
         if: matrix.os != 'windows'
+        env:
+          WICKSET_NO_GPU: 1 # hosted Macs have no Metal: the GPU tests skip, the build still has it
         run: go test -count=1 -short -tags "$TAGS" ./...
 
       # Outside the checkout, so the build is not "+dirty".
@@ -93,3 +95,40 @@ jobs:
           pre=; case "$GITHUB_REF_NAME" in *-*) pre=--prerelease;; esac
           gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --verify-tag $pre \
             --title "wickset $GITHUB_REF_NAME" --generate-notes wickset-* SHA256SUMS
+
+  # Each shipped binary, benched on the CPU on its own platform's runner,
+  # after the release is out, so a slow or noisy bench never holds one up.
+  # The rows go on the release, for benchmarks/scores.csv. Hosted runners are
+  # small shared VMs, and their Macs have no Metal: reference rows, not
+  # measurements.
+  bench:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: darwin, arch: arm64, runner: macos-15 }
+          - { os: linux, arch: amd64, runner: ubuntu-24.04 }
+          - { os: linux, arch: arm64, runner: ubuntu-24.04-arm }
+          - { os: windows, arch: amd64, runner: windows-2025 }
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: ${{ matrix.os }}-${{ matrix.arch }}
+      - name: bench
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name="wickset-$GITHUB_REF_NAME-${{ matrix.os }}-${{ matrix.arch }}"
+          if [ -f "$name.zip" ]; then unzip -q "$name.zip"; exe=wickset.exe; else tar xzf "$name.tar.gz"; exe=wickset; fi
+          "./$name/$exe" --version
+          for a in 1 2 3 4; do "./$name/$exe" --cpu bench --csv --alg "$a"; done |
+            awk 'NR==1 || !/^date,/' > "scores-${{ matrix.os }}-${{ matrix.arch }}.csv"
+          { echo '```csv'; cat scores-*.csv; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" scores-*.csv

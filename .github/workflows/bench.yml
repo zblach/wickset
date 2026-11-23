@@ -1,12 +1,12 @@
 # Tests and benchmarks on GitHub's runners: real x86_64 and arm64 hardware,
 # where the vendored amd64 SHA-256 routines (SHA-NI, AVX2) run natively, and
-# a measure of libsodium's Argon2id lead over x/crypto on each. The CSV rows
-# are benchmarks/scores.csv's; add them there by hand.
+# a measure of libsodium's Argon2id lead over x/crypto on each, which only
+# benching both builds side by side gives. Run by hand; a release benches its
+# own binaries (release.yml). The CSV rows are benchmarks/scores.csv's; add
+# them there by hand.
 name: test and bench
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:

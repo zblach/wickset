@@ -15,11 +15,24 @@ import (
 	"wickset/wick"
 )
 
+// needGPU fails a test without a working GPU, or skips it where
+// WICKSET_NO_GPU says there is none to be had (as gpu's tests do).
+func needGPU(t *testing.T) {
+	t.Helper()
+	if _, err := device(); err != nil {
+		if os.Getenv("WICKSET_NO_GPU") != "" {
+			t.Skipf("no GPU (WICKSET_NO_GPU): %v", err)
+		}
+		t.Fatal(err)
+	}
+}
+
 // TestSealWithGPU seals a real 0x01 wick through Seal, which puts its 60
 // steps on the GPU (many more than 2 workers' worth), then opens it on the
 // CPU, as any solver would: the GPU's steps are exactly the CPU's, or the
 // plaintext never comes back.
 func TestSealWithGPU(t *testing.T) {
+	needGPU(t)
 	dir := t.TempDir()
 	file := filepath.Join(dir, "plain")
 	plaintext := []byte("sealed on the GPU")
@@ -62,6 +75,7 @@ func TestSealWithGPU(t *testing.T) {
 // there; and the GPU's steps, built on it directly, burn on the CPU to the
 // same secret. One GPU thread takes ~45 s a 0x03 step: without -short only.
 func TestSHA256OnGPU(t *testing.T) {
+	needGPU(t)
 	a, _ := alg.Lookup(alg.SHA256Short)
 	var notes []string
 	e := &Env{Note: func(n Note) { notes = append(notes, n.String()) }, GPU: true}
