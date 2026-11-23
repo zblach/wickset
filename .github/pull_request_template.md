@@ -1,7 +1,7 @@
 ## What and why
 
-<!-- Submitting benchmark rows? Use the benchmark template instead:
-     add ?template=benchmark.md to this page's URL. -->
+<!-- Submitting benchmarks? No pull request needed: `wickset bench --submit`
+     prints a link to the benchmark issue form, filled in. -->
 
 ## Checks
 

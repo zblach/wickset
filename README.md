@@ -97,9 +97,9 @@ columns. To add yours, on an otherwise idle machine on mains power:
     wickset bench --submit
 
 It benches every algorithm, on the CPU and on the GPU if wickset can use
-one, which takes several minutes. It then prints the rows and a link to
-GitHub's new-file page with them filled in. Following the link makes you a
-fork and opens the pull request; nothing is sent unless you do.
+one, which takes several minutes. It then prints a summary and a link to
+the benchmark issue form with your machine and results filled in. Check it
+and submit; nothing is sent unless you do.
 
 ## Library
 

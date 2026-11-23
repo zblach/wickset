@@ -8,10 +8,10 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"wickset/alg"
@@ -99,20 +99,38 @@ func benchAll(ctx context.Context, env *ops.Env) ([]ops.Bench, error) {
 	return out, nil
 }
 
-// submitLink is a link that opens a new file in benchmarks/submissions with
-// rows already in it: following it, someone without write access gets a
-// fork made for them and proposes the file as a pull request. Nothing is
-// sent until then.
-func submitLink(rows string) string {
-	name := fmt.Sprintf("benchmarks/submissions/%s-%s-%s-%s.csv",
-		time.Now().UTC().Format("2006-01-02"), runtime.GOOS, runtime.GOARCH, slug(cmp.Or(cpuName(), "cpu")))
-	q := url.Values{"filename": {name}, "value": {rows}}
-	return repo + "/new/main?" + q.Encode()
+// writeBenchSummary writes bs as a table for people: per algorithm and
+// where it sealed, the step, the seal's pace, and the speed-up.
+func writeBenchSummary(w io.Writer, bs ...ops.Bench) error {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "alg\ton\tstep\tseal rate\tspeed-up")
+	for _, b := range bs {
+		on, rate := "cpu", 1/b.Step.Seconds()
+		if b.SealOn != "" {
+			on = "gpu"
+		}
+		if r, ok := b.Best(); ok {
+			rate = r.Rate
+		}
+		fmt.Fprintf(tw, "%v %s\t%s\t%v\t%.3g steps/s\t×%.1f\n",
+			b.Alg.ID(), b.Alg.Name(), on, b.Step.Round(time.Millisecond), rate, b.SpeedUp())
+	}
+	return tw.Flush()
 }
 
-var nonWord = regexp.MustCompile(`[^a-z0-9]+`)
-
-// slug is s as a file name part: "Apple M5" is "apple-m5".
-func slug(s string) string {
-	return strings.Trim(nonWord.ReplaceAllString(strings.ToLower(s), "-"), "-")
+// submitLink is a link to the benchmark issue form
+// (.github/ISSUE_TEMPLATE/benchmark.yml) with this machine and the rows
+// filled in, for its owner to check and submit. Nothing is sent until then.
+func submitLink(rows string) string {
+	cpu := cmp.Or(cpuName(), runtime.GOARCH)
+	q := url.Values{
+		"template": {"benchmark.yml"},
+		"title":    {"Benchmark: " + cpu},
+		"cpu":      {cpu},
+		"gpu":      {ops.GPUName()},
+		"os":       {runtime.GOOS + "/" + runtime.GOARCH},
+		"version":  {versionLine()},
+		"rows":     {rows},
+	}
+	return repo + "/issues/new?" + q.Encode()
 }

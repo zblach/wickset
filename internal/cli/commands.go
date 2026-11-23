@@ -179,13 +179,13 @@ func (c *infoCmd) Run() error {
 type benchCmd struct {
 	Alg    algFlag `default:"1" predictor:"alg" help:"Algorithm id or name: ${algs}."`
 	CSV    bool    `name:"csv" xor:"out" help:"Print a row for benchmarks/scores.csv, with its header, instead of the table."`
-	Submit bool    `xor:"out" help:"Bench every algorithm, on the CPU and on the GPU if there is one (several minutes), and print the rows with a link that proposes them as a pull request."`
+	Submit bool    `xor:"out" help:"Bench every algorithm, on the CPU and on the GPU if there is one (several minutes), and print a link that submits the results as an issue."`
 }
 
 func (*benchCmd) Help() string {
-	return "--submit adds this machine to benchmarks/scores.csv: it prints the rows, then a\n" +
-		"link to GitHub's new-file page with them filled in. Nothing is sent unless\n" +
-		"you follow it; GitHub then makes you a fork and opens the pull request.\n" +
+	return "--submit offers this machine for benchmarks/scores.csv: it prints a summary,\n" +
+		"then a link to the project's benchmark issue form with the results filled in.\n" +
+		"Nothing is sent unless you follow it and submit the form.\n" +
 		"Run it with nothing else heavy going on, and on mains power."
 }
 
@@ -199,7 +199,11 @@ func (c *benchCmd) Run(ctx context.Context, env *ops.Env) error {
 		if err := writeBenchCSV(&rows, bs...); err != nil {
 			return err
 		}
-		fmt.Printf("%s\nTo submit these rows as a pull request, open:\n\n%s\n", rows.String(), submitLink(rows.String()))
+		fmt.Println()
+		if err := writeBenchSummary(os.Stdout, bs...); err != nil {
+			return err
+		}
+		fmt.Printf("\nTo submit these as a benchmark issue, open:\n\n%s\n", submitLink(rows.String()))
 		return nil
 	}
 	b, err := env.Bench(ctx, c.Alg.Alg)

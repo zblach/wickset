@@ -11,8 +11,9 @@ import (
 	"wickset/internal/ops"
 )
 
-// TestSubmitLink: the link opens GitHub's new-file page in
-// benchmarks/submissions, with the rows as the file's contents, intact.
+// TestSubmitLink: the link opens the benchmark issue form with this
+// machine's fields and the rows, intact, and the summary has a line a
+// bench.
 func TestSubmitLink(t *testing.T) {
 	a, _ := alg.Lookup(alg.SHA256Short)
 	b := ops.Bench{Alg: a, Step: 300 * time.Millisecond, Rounds: []ops.BenchRound{{At: 4, Rate: 10}}}
@@ -30,14 +31,23 @@ func TestSubmitLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	q := u.Query()
-	if u.Host != "github.com" || !strings.HasSuffix(u.Path, "/new/main") ||
-		!strings.HasPrefix(q.Get("filename"), "benchmarks/submissions/") || !strings.HasSuffix(q.Get("filename"), ".csv") {
+	if u.Host != "github.com" || !strings.HasSuffix(u.Path, "/issues/new") || q.Get("template") != "benchmark.yml" {
 		t.Errorf("link %s", u)
 	}
-	if q.Get("value") != rows.String() {
-		t.Errorf("the file would hold %q, not the rows", q.Get("value"))
+	for _, field := range []string{"title", "cpu", "os", "version"} { // the form's required fields, and the title
+		if q.Get(field) == "" {
+			t.Errorf("no %s in %s", field, u)
+		}
 	}
-	if got := slug("AMD EPYC 9V74 80-Core Processor"); got != "amd-epyc-9v74-80-core-processor" {
-		t.Errorf("slug %q", got)
+	if q.Get("rows") != rows.String() {
+		t.Errorf("the form would hold %q, not the rows", q.Get("rows"))
+	}
+
+	var summary strings.Builder
+	if err := writeBenchSummary(&summary, b, b); err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Split(strings.TrimSpace(summary.String()), "\n"); len(lines) != 3 || !strings.Contains(lines[1], a.Name()) {
+		t.Errorf("summary:\n%s", summary.String())
 	}
 }

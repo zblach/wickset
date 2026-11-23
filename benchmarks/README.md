@@ -6,12 +6,10 @@ one core, and how fast the same machine seals. Contributions are welcome:
     wickset bench --submit
 
 benches every algorithm on the CPU, and on the GPU where wickset can use
-one, then prints a link that proposes the rows as a new file in
-`submissions/`, one per machine and day. Each pull request adds its own
-file, so submissions never conflict; merging folds them into `scores.csv`.
-The [benchmark template](../.github/PULL_REQUEST_TEMPLATE/benchmark.md)
-(`?template=benchmark.md` on a pull request's URL) asks what a reviewer
-would want to know.
+one, then prints a link to the
+[benchmark issue form](../.github/ISSUE_TEMPLATE/benchmark.yml) with the
+machine and rows filled in. No fork or pull request is needed: a
+maintainer adds the rows from the issue to `scores.csv`.
 
 | column | meaning |
 |---|---|

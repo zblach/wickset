@@ -1,0 +1,55 @@
+name: Benchmark submission
+description: Step times from your machine, for benchmarks/scores.csv. `wickset bench --submit` fills this in.
+title: "Benchmark: "
+labels: [benchmark]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! `wickset bench --submit` benches every algorithm and prints a link that fills in
+        this form. The fields below come from your machine; please check them and add anything unusual.
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+      description: The GPU wickset sealed on, if any.
+  - type: input
+    id: os
+    attributes:
+      label: OS and architecture
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: wickset version
+      description: "`wickset --version`"
+    validations:
+      required: true
+  - type: textarea
+    id: rows
+    attributes:
+      label: Rows
+      description: As `bench --submit` printed them, unedited.
+      render: csv
+    validations:
+      required: true
+  - type: checkboxes
+    id: conditions
+    attributes:
+      label: Conditions
+      options:
+        - label: On mains power (laptops throttle on battery)
+        - label: Nothing else heavy was running
+        - label: A release binary, or a build of a tagged commit
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Anything unusual, such as a VM, thermal limits or a custom build.
