@@ -92,14 +92,14 @@ someone else's hardware.
 How long a wick takes depends on the opener's hardware, so step times from
 many machines say more than any one. [benchmarks/scores.csv](benchmarks/scores.csv)
 collects them; [benchmarks/README.md](benchmarks/README.md) explains the
-columns. To add yours, on an otherwise idle machine:
+columns. To add yours, on an otherwise idle machine on mains power:
 
-    for a in 1 2 3 4; do wickset --cpu bench --csv --alg $a; done | awk 'NR==1 || !/^date,/'
+    wickset bench --submit
 
-With a GPU wickset can use, run the four again without `--cpu`. Append the
-rows (not the header) to `scores.csv` and open a pull request with the
-[benchmark template](.github/PULL_REQUEST_TEMPLATE/benchmark.md), by adding
-`?template=benchmark.md` to the pull request's URL.
+It benches every algorithm, on the CPU and on the GPU if wickset can use
+one, which takes several minutes. It then prints the rows and a link to
+GitHub's new-file page with them filled in. Following the link makes you a
+fork and opens the pull request; nothing is sent unless you do.
 
 ## Library
 

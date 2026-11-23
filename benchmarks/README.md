@@ -2,11 +2,16 @@
 
 `scores.csv` collects `wickset bench --csv` runs: how long a step takes on
 one core, and how fast the same machine seals. Contributions are welcome:
-run each algorithm, with `--cpu` and, where you have one, on the GPU, and
-open a pull request with the rows, using the benchmark template (add
-`?template=benchmark.md` to the new pull request's URL).
 
-    for a in 1 2 3 4; do wickset --cpu bench --csv --alg $a; done | awk 'NR==1 || !/^date,/'
+    wickset bench --submit
+
+benches every algorithm on the CPU, and on the GPU where wickset can use
+one, then prints a link that proposes the rows as a new file in
+`submissions/`, one per machine and day. Each pull request adds its own
+file, so submissions never conflict; merging folds them into `scores.csv`.
+The [benchmark template](../.github/PULL_REQUEST_TEMPLATE/benchmark.md)
+(`?template=benchmark.md` on a pull request's URL) asks what a reviewer
+would want to know.
 
 | column | meaning |
 |---|---|

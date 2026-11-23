@@ -1,6 +1,6 @@
 ## Benchmark submission
 
-Adds rows to `benchmarks/scores.csv` from `wickset bench --csv`
+Adds `benchmarks/submissions/…csv` from `wickset bench --submit`
 ([benchmarks/README.md](../benchmarks/README.md)).
 
 **Machine**
@@ -11,10 +11,7 @@ Adds rows to `benchmarks/scores.csv` from `wickset bench --csv`
 
 **How I ran it**
 - [ ] A release binary (which: ) or a build from a tagged commit, not a dirty tree
-- [ ] All four algorithms with `--cpu`:
-      `for a in 1 2 3 4; do wickset --cpu bench --csv --alg $a; done | awk 'NR==1 || !/^date,/'`
-- [ ] With a GPU wickset can use (Metal on macOS), all four without `--cpu` as well
+- [ ] `wickset bench --submit`, with the file as it made it: no edits
 - [ ] Nothing else heavy running at the time
-- [ ] Rows appended to the end of `scores.csv` as printed: no header, no edits
 
 **Notes** (anything unusual: a VM, thermal limits, a custom build):
